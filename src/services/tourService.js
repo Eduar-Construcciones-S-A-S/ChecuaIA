@@ -1,5 +1,16 @@
 import { supabase } from '../lib/supabase'
 
+const BUGGY_FALLBACK_TOTALS = {
+  'mirador del desierto': { 1: 76000, 2: 95000 },
+  'mirador de suesca': { 1: 164000, 2: 205000 },
+  'travesía cordillera oriental': { 1: 240000, 2: 300000 },
+  'travesia cordillera oriental': { 1: 240000, 2: 300000 },
+  'travesía la pared': { 1: 315000, 2: 394000 },
+  'travesia la pared': { 1: 315000, 2: 394000 },
+  'expedición off road': { 1: 395000, 2: 494000 },
+  'expedicion off road': { 1: 395000, 2: 494000 }
+}
+
 const mapPlan = (item) => ({
   id: item.id_plan,
   name: item.nombre_plan,
@@ -13,6 +24,41 @@ const mapPlan = (item) => ({
   es_grupo: item.es_grupo,
   id_plan_padre: item.id_plan_padre
 })
+
+const normalizeName = (name = '') => name.toLowerCase().trim()
+
+const ensureBuggyTariffs = (plan, tariffs = []) => {
+  const fallback = BUGGY_FALLBACK_TOTALS[normalizeName(plan?.name)]
+  if (!fallback) return tariffs
+
+  const result = [...tariffs]
+  const hasOne = result.some((tariff) => Number(tariff.peopleMin) === 1)
+  const hasTwo = result.some((tariff) => Number(tariff.peopleMin) === 2)
+
+  if (!hasOne) {
+    result.push({
+      peopleMin: 1,
+      peopleMax: 1,
+      unitPrice: fallback[1],
+      totalPrice: fallback[1],
+      dayType: 'todos',
+      source: 'fallback'
+    })
+  }
+
+  if (!hasTwo) {
+    result.push({
+      peopleMin: 2,
+      peopleMax: 2,
+      unitPrice: fallback[2] / 2,
+      totalPrice: fallback[2],
+      dayType: 'todos',
+      source: 'fallback'
+    })
+  }
+
+  return result.sort((a, b) => Number(a.peopleMin) - Number(b.peopleMin))
+}
 
 export const getTours = async () => {
   try {
@@ -55,10 +101,6 @@ export const getSubplans = async (parentPlanId) => {
     const plans = (data ?? []).map(mapPlan)
     if (!plans.length) return []
 
-    // Las tarifas se consultan aparte para no hacer depender la carga de rutas
-    // de una relación embebida de PostgREST. Para los Buggies, precio_persona
-    // es unitario, así que el total visible se calcula multiplicando por la
-    // cantidad mínima de personas de cada tarifa (1 o 2).
     const planIds = plans.map(plan => plan.id)
     const { data: tariffData, error: tariffError } = await supabase
       .from('plan_tarifa')
@@ -69,7 +111,10 @@ export const getSubplans = async (parentPlanId) => {
 
     if (tariffError) {
       console.warn('--- NO SE PUDIERON CARGAR TARIFAS DE SUBPLANES ---', tariffError.message)
-      return plans.map(plan => ({ ...plan, tariffs: [] }))
+      return plans.map(plan => ({
+        ...plan,
+        tariffs: ensureBuggyTariffs(plan, [])
+      }))
     }
 
     const tariffsByPlan = (tariffData ?? []).reduce((acc, tariff) => {
@@ -81,14 +126,15 @@ export const getSubplans = async (parentPlanId) => {
         peopleMax: Number(tariff.personas_max || people),
         unitPrice: Number(tariff.precio_persona || 0),
         totalPrice: Number(tariff.precio_persona || 0) * people,
-        dayType: tariff.tipo_dia
+        dayType: tariff.tipo_dia,
+        source: 'database'
       })
       return acc
     }, {})
 
     return plans.map(plan => ({
       ...plan,
-      tariffs: tariffsByPlan[String(plan.id)] || []
+      tariffs: ensureBuggyTariffs(plan, tariffsByPlan[String(plan.id)] || [])
     }))
   } catch (err) {
     console.error('--- ERROR INESPERADO EN SUBPLANES ---', err)
