@@ -31,9 +31,7 @@ export const saveParticipants = async (participants) => {
         .eq('numero_documento', participant.numero_documento)
         .select()
 
-      if (updateError) {
-        return { data: null, error: updateError }
-      }
+      if (updateError) return { data: null, error: updateError }
 
       if (updatedData && updatedData.length > 0) {
         results.push(...updatedData)
@@ -45,10 +43,7 @@ export const saveParticipants = async (participants) => {
         .insert(participant)
         .select()
 
-      if (insertError) {
-        return { data: null, error: insertError }
-      }
-
+      if (insertError) return { data: null, error: insertError }
       if (insertedData) results.push(...insertedData)
     }
 
@@ -61,37 +56,67 @@ export const saveParticipants = async (participants) => {
 
 export const saveParticipantsForReservation = async (participants, reservationId) => {
   try {
-    const participantsWithReservation = participants.map(p => ({
-      ...p,
-      id_reserva: reservationId
-    }))
-
-    const { data, error } = await supabase
-      .from('participante')
-      .insert(participantsWithReservation)
-      .select()
-
-    if (!error) return { data, error: null }
-
-    if (error?.code !== '23505') {
-      return { data: null, error }
-    }
-
     const results = []
 
-    for (const participant of participantsWithReservation) {
-      const { data: updatedData, error: updateError } = await supabase
-        .from('participante')
-        .update(participant)
-        .eq('id_reserva', participant.id_reserva)
-        .eq('numero_documento', participant.numero_documento)
-        .select()
-
-      if (updateError) {
-        return { data: null, error: updateError }
+    for (const rawParticipant of participants) {
+      const participant = {
+        ...rawParticipant,
+        id_reserva: reservationId
       }
 
-      if (updatedData) results.push(...updatedData)
+      // No dependemos de una restricción UNIQUE que la tabla actualmente no tiene.
+      // Primero buscamos el participante dentro de la misma reserva por documento.
+      let existing = null
+
+      if (participant.numero_documento) {
+        const { data, error } = await supabase
+          .from('participante')
+          .select('id_participante')
+          .eq('id_reserva', reservationId)
+          .eq('numero_documento', participant.numero_documento)
+          .limit(1)
+          .maybeSingle()
+
+        if (error) return { data: null, error }
+        existing = data
+      }
+
+      // Respaldo para casos sin documento: teléfono del participante + nombre.
+      if (!existing && participant.telefono_participante) {
+        let query = supabase
+          .from('participante')
+          .select('id_participante')
+          .eq('id_reserva', reservationId)
+          .eq('telefono_participante', participant.telefono_participante)
+
+        if (participant.nombre) query = query.eq('nombre', participant.nombre)
+
+        const { data, error } = await query.limit(1).maybeSingle()
+        if (error) return { data: null, error }
+        existing = data
+      }
+
+      if (existing?.id_participante) {
+        const { data, error } = await supabase
+          .from('participante')
+          .update(participant)
+          .eq('id_participante', existing.id_participante)
+          .select()
+          .single()
+
+        if (error) return { data: null, error }
+        if (data) results.push(data)
+        continue
+      }
+
+      const { data, error } = await supabase
+        .from('participante')
+        .insert(participant)
+        .select()
+        .single()
+
+      if (error) return { data: null, error }
+      if (data) results.push(data)
     }
 
     return { data: results, error: null }
