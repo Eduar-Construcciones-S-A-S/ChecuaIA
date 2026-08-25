@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { isValidPhoneNumber } from 'libphonenumber-js';
 import { findClientByPhone, findOrCreateClient, updateClientPlan } from '../services/clientService';
 import { getReservationsByPhone } from '../services/reservationService';
+import { getSubplans } from '../services/tourService';
 import ExistingReservationsPanel from './ExistingReservationsPanel';
 import WelcomeStartForm from './WelcomeStartForm';
 
@@ -11,6 +12,9 @@ const WelcomeModal = ({ isOpen, onComplete, onClose, tours = [], loading = false
   const [phone, setPhone] = useState(initialPhone);
   const [selectedCountry, setSelectedCountry] = useState(initialPhone ? undefined : 'co');
   const [selectedTourId, setSelectedTourId] = useState(initialTourId ? String(initialTourId) : '');
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [subplans, setSubplans] = useState([]);
+  const [loadingSubplans, setLoadingSubplans] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [clientStatus, setClientStatus] = useState('idle');
   const [clientData, setClientData] = useState(null);
@@ -94,8 +98,31 @@ const WelcomeModal = ({ isOpen, onComplete, onClose, tours = [], loading = false
     setLookupError('');
   };
 
+  const handleMainTourChange = async (tourId) => {
+    const selected = tours.find(item => String(item.id) === String(tourId));
+    if (!selected) return;
+
+    if (selected.es_grupo) {
+      setSelectedGroupId(String(selected.id));
+      setSelectedTourId('');
+      setSubplans([]);
+      setLoadingSubplans(true);
+      try {
+        const children = await getSubplans(selected.id);
+        setSubplans(children);
+      } finally {
+        setLoadingSubplans(false);
+      }
+      return;
+    }
+
+    setSelectedGroupId('');
+    setSubplans([]);
+    setSelectedTourId(String(selected.id));
+  };
+
   const continueToNewReservation = async (resolvedClient = clientData) => {
-    const tour = tours.find((item) => String(item.id) === String(selectedTourId));
+    const tour = [...tours, ...subplans].find((item) => String(item.id) === String(selectedTourId));
     if (!tour) return;
 
     const { error: planError } = await updateClientPlan(phoneWithPlus, selectedTourId);
@@ -162,44 +189,24 @@ const WelcomeModal = ({ isOpen, onComplete, onClose, tours = [], loading = false
         <div className="h-2 w-full bg-brand-primary rounded-t-[2.5rem]" />
 
         <div className="absolute top-6 right-6 flex items-center gap-3 z-20">
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className={`w-11 h-11 flex items-center justify-center rounded-2xl transition-all shadow-sm border-2 ${theme === 'light' ? 'bg-white border-brand-border text-amber-500' : 'bg-dark-bg-main border-dark-border text-brand-primary'}`}
-            aria-label="Cambiar tema"
-          >
+          <button type="button" onClick={toggleTheme} className={`w-11 h-11 flex items-center justify-center rounded-2xl transition-all shadow-sm border-2 ${theme === 'light' ? 'bg-white border-brand-border text-amber-500' : 'bg-dark-bg-main border-dark-border text-brand-primary'}`} aria-label="Cambiar tema">
             {theme === 'light' ? '☀️' : '🌙'}
           </button>
 
           <div className="flex bg-brand-light/50 dark:bg-dark-bg-main/50 p-1.5 rounded-2xl border-2 border-brand-border dark:border-dark-border gap-1">
             {['es', 'en'].map((lng) => (
-              <button
-                key={lng}
-                type="button"
-                onClick={() => i18n.changeLanguage(lng)}
-                className={`px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${i18n.language.startsWith(lng) ? 'bg-brand-primary text-white shadow-md' : 'text-brand-text-secondary dark:text-dark-text-secondary'}`}
-              >
+              <button key={lng} type="button" onClick={() => i18n.changeLanguage(lng)} className={`px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${i18n.language.startsWith(lng) ? 'bg-brand-primary text-white shadow-md' : 'text-brand-text-secondary dark:text-dark-text-secondary'}`}>
                 {lng.toUpperCase()}
               </button>
             ))}
           </div>
 
-          {initialPhone && (
-            <button type="button" onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-xl text-brand-text-secondary hover:text-red-500" aria-label="Cerrar">✕</button>
-          )}
+          {initialPhone && <button type="button" onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-xl text-brand-text-secondary hover:text-red-500" aria-label="Cerrar">✕</button>}
         </div>
 
         <div className="px-6 pt-20 pb-8 md:pt-24 md:pb-10 md:px-10">
           {showExistingReservations ? (
-            <ExistingReservationsPanel
-              reservations={existingReservations}
-              tours={tours}
-              isEnglish={isEnglish}
-              isProcessing={isProcessing}
-              errorMessage={lookupError}
-              onBack={() => setShowExistingReservations(false)}
-              onCreateNew={handleCreateNew}
-            />
+            <ExistingReservationsPanel reservations={existingReservations} tours={[...tours, ...subplans]} isEnglish={isEnglish} isProcessing={isProcessing} errorMessage={lookupError} onBack={() => setShowExistingReservations(false)} onCreateNew={handleCreateNew} />
           ) : (
             <WelcomeStartForm
               t={t}
@@ -209,9 +216,13 @@ const WelcomeModal = ({ isOpen, onComplete, onClose, tours = [], loading = false
               isValid={isValid}
               clientStatus={clientStatus}
               selectedTourId={selectedTourId}
-              onTourChange={setSelectedTourId}
+              selectedGroupId={selectedGroupId}
+              onTourChange={handleMainTourChange}
+              onSubplanChange={setSelectedTourId}
               tours={tours}
+              subplans={subplans}
               loading={loading}
+              loadingSubplans={loadingSubplans}
               acceptedTerms={acceptedTerms}
               onTermsChange={setAcceptedTerms}
               isProcessing={isProcessing}
