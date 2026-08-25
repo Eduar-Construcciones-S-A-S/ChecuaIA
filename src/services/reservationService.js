@@ -79,29 +79,26 @@ const findEquivalentPendingReservation = async ({ phone, planId, people, selecte
   const dateValue = String(selectedDate || '').slice(0, 10)
   const timeValue = normalizeTime(selectedTime)
 
+  // El filtro se hace en Supabase por los VALORES reales de fecha y hora.
+  // !inner evita depender de id_fecha/id_hora, que pueden variar aunque el valor sea igual.
   const { data, error } = await supabase
     .from('reserva')
     .select(`
       *,
-      plan_fechas!reserva_id_fecha_fkey(fecha),
-      plan_horas!reserva_id_hora_fkey(hora)
+      plan_fechas!inner(fecha),
+      plan_horas!inner(hora)
     `)
     .eq('telefono_cliente', phone)
     .eq('id_plan', planId)
     .eq('cantidad_personas', people)
     .eq('aprobado', false)
+    .eq('plan_fechas.fecha', dateValue)
+    .eq('plan_horas.hora', timeValue)
     .order('fecha_solicitud', { ascending: false })
-    .limit(20)
+    .limit(1)
+    .maybeSingle()
 
-  if (error) return { data: null, error }
-
-  const existing = (data || []).find((row) => {
-    const rowDate = String(row.plan_fechas?.fecha || '').slice(0, 10)
-    const rowTime = normalizeTime(row.plan_horas?.hora)
-    return rowDate === dateValue && rowTime === timeValue
-  })
-
-  return { data: existing || null, error: null }
+  return { data: data || null, error }
 }
 
 export const getReservationsByPhone = async (phone) => {
@@ -134,8 +131,6 @@ export const createReservation = async (reservation) => {
     const people = Number(reservation.cantidad_personas || 1)
     const phone = normalizePhone(reservation.telefono_cliente)
 
-    // Primero se compara por los valores reales de fecha y hora. No dependemos de
-    // id_fecha/id_hora porque esos IDs pueden ser distintos para el mismo valor.
     const { data: existing, error: existingError } = await findEquivalentPendingReservation({
       phone,
       planId,
