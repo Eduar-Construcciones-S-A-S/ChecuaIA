@@ -19,7 +19,7 @@ export const PAYMENT_CONFIG = {
     name: "Bancolombia: Carlos Humberto Parra Franco · Nequi/Daviplata: Orlando Acosta"
   },
   whatsapp: {
-    official_number: "573015119344",
+    official_number: "573212762761",
     logo: PAYMENT_ASSETS.whatsapp
   }
 };
