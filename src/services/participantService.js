@@ -54,72 +54,49 @@ export const saveParticipants = async (participants) => {
   }
 }
 
+/**
+ * Sincroniza la lista completa de participantes de una reserva.
+ * La lista recibida desde el formulario es la fuente de verdad:
+ * responsable + todos los acompañantes.
+ */
 export const saveParticipantsForReservation = async (participants, reservationId) => {
   try {
-    const results = []
-
-    for (const rawParticipant of participants) {
-      const participant = {
-        ...rawParticipant,
-        id_reserva: reservationId
-      }
-
-      // No dependemos de una restricción UNIQUE que la tabla actualmente no tiene.
-      // Primero buscamos el participante dentro de la misma reserva por documento.
-      let existing = null
-
-      if (participant.numero_documento) {
-        const { data, error } = await supabase
-          .from('participante')
-          .select('id_participante')
-          .eq('id_reserva', reservationId)
-          .eq('numero_documento', participant.numero_documento)
-          .limit(1)
-          .maybeSingle()
-
-        if (error) return { data: null, error }
-        existing = data
-      }
-
-      // Respaldo para casos sin documento: teléfono del participante + nombre.
-      if (!existing && participant.telefono_participante) {
-        let query = supabase
-          .from('participante')
-          .select('id_participante')
-          .eq('id_reserva', reservationId)
-          .eq('telefono_participante', participant.telefono_participante)
-
-        if (participant.nombre) query = query.eq('nombre', participant.nombre)
-
-        const { data, error } = await query.limit(1).maybeSingle()
-        if (error) return { data: null, error }
-        existing = data
-      }
-
-      if (existing?.id_participante) {
-        const { data, error } = await supabase
-          .from('participante')
-          .update(participant)
-          .eq('id_participante', existing.id_participante)
-          .select()
-          .single()
-
-        if (error) return { data: null, error }
-        if (data) results.push(data)
-        continue
-      }
-
-      const { data, error } = await supabase
-        .from('participante')
-        .insert(participant)
-        .select()
-        .single()
-
-      if (error) return { data: null, error }
-      if (data) results.push(data)
+    if (!reservationId) {
+      return { data: null, error: new Error('reservationId es obligatorio') }
     }
 
-    return { data: results, error: null }
+    const participantsWithReservation = (participants || []).map((participant) => ({
+      ...participant,
+      id_reserva: reservationId
+    }))
+
+    if (participantsWithReservation.length === 0) {
+      return { data: [], error: null }
+    }
+
+    // Evita que reaperturas del modal acumulen o sobrescriban solo una parte
+    // de los participantes. La reserva queda exactamente como está el formulario.
+    const { error: deleteError } = await supabase
+      .from('participante')
+      .delete()
+      .eq('id_reserva', reservationId)
+
+    if (deleteError) {
+      console.error('Error al limpiar participantes anteriores:', deleteError)
+      return { data: null, error: deleteError }
+    }
+
+    const { data, error } = await supabase
+      .from('participante')
+      .insert(participantsWithReservation)
+      .select()
+
+    if (error) {
+      console.error('Error al insertar la lista completa de participantes:', error)
+      return { data: null, error }
+    }
+
+    return { data: data || [], error: null }
   } catch (err) {
     console.error('Error in saveParticipantsForReservation service:', err)
     return { data: null, error: err }
