@@ -66,37 +66,84 @@ function App() {
 
   const automaticPeople = 1 + (reservationData.companions?.length || 0);
 
+  const applyCurrentPricing = async (people = automaticPeople) => {
+    const { id_plan, precio_base } = reservationData.tour;
+    const fecha = reservationData.date.fecha_reserva;
+
+    if (!id_plan || !fecha) return true;
+
+    const result = await getAutomaticPlanPricing({
+      planId: id_plan,
+      people,
+      date: fecha
+    });
+
+    if (!result.error && Number(result.unitPrice) > 0) {
+      setReservationData(prev => ({
+        ...prev,
+        tour: {
+          ...prev.tour,
+          precio_por_persona: Number(result.unitPrice)
+        }
+      }));
+      return true;
+    }
+
+    // Plan normal sin tarifas automáticas: conserva el precio base.
+    if (precio_base != null && Number(precio_base) > 0) {
+      setReservationData(prev => ({
+        ...prev,
+        tour: {
+          ...prev.tour,
+          precio_por_persona: Number(precio_base)
+        }
+      }));
+      return true;
+    }
+
+    console.error('No fue posible determinar el precio actual del plan:', result.error);
+    return false;
+  };
+
   useEffect(() => {
     let cancelled = false;
-    const { id_plan, tipo_fecha, precio_base } = reservationData.tour;
+    const { id_plan, precio_base } = reservationData.tour;
     const fecha = reservationData.date.fecha_reserva;
 
     if (!id_plan || !fecha) return undefined;
 
-    if (tipo_fecha !== 'cualquier_dia') {
-      if (precio_base != null) {
+    getAutomaticPlanPricing({
+      planId: id_plan,
+      people: automaticPeople,
+      date: fecha
+    }).then(result => {
+      if (cancelled) return;
+
+      if (!result.error && Number(result.unitPrice) > 0) {
         setReservationData(prev => ({
           ...prev,
-          tour: { ...prev.tour, precio_por_persona: Number(precio_base) }
+          tour: {
+            ...prev.tour,
+            precio_por_persona: Number(result.unitPrice)
+          }
         }));
-      }
-      return undefined;
-    }
-
-    getAutomaticPlanPricing({ planId: id_plan, people: automaticPeople, date: fecha }).then(result => {
-      if (cancelled) return;
-      if (result.error) {
-        console.error('No se pudo recalcular la tarifa automática:', result.error);
         return;
       }
-      setReservationData(prev => ({
-        ...prev,
-        tour: { ...prev.tour, precio_por_persona: result.unitPrice }
-      }));
+
+      // Si el plan no usa plan_tarifa, mantenemos compatibilidad con precio_plan.
+      if (precio_base != null && Number(precio_base) > 0) {
+        setReservationData(prev => ({
+          ...prev,
+          tour: {
+            ...prev.tour,
+            precio_por_persona: Number(precio_base)
+          }
+        }));
+      }
     });
 
     return () => { cancelled = true; };
-  }, [reservationData.tour.id_plan, reservationData.tour.tipo_fecha, reservationData.tour.precio_base, reservationData.date.fecha_reserva, automaticPeople]);
+  }, [reservationData.tour.id_plan, reservationData.tour.precio_base, reservationData.date.fecha_reserva, automaticPeople]);
 
   const handleContactChange = (field, value) => {
     setReservationData(prev => ({ ...prev, contact: { ...prev.contact, [field]: value } }));
@@ -157,8 +204,6 @@ function App() {
       ...prev,
       date: {
         ...meta,
-        // La lógica temporal de "precio con asesor" queda desactivada.
-        // Para planes de cualquier día, el precio sale de plan_tarifa vía RPC.
         puede_variar_precio: false,
         rawDate: date
       }
@@ -279,10 +324,17 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleStep1ReserveAlone = () => {
+  const handleStep1ReserveAlone = async () => {
     if (validateStep1()) {
       setReservationData(prev => ({ ...prev, companions: [] }));
-      setShowCompanionsSection(false); setCurrentStep(3); setShowSummary(true);
+      const pricingReady = await applyCurrentPricing(1);
+      if (!pricingReady) {
+        alert('No fue posible calcular la tarifa actual del plan. Intenta nuevamente.');
+        return;
+      }
+      setShowCompanionsSection(false);
+      setCurrentStep(3);
+      setShowSummary(true);
       setTimeout(() => document.getElementById('reservation-summary')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     }
   };
@@ -300,9 +352,16 @@ function App() {
     setTimeout(() => document.getElementById('companions-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
   };
 
-  const handleStep2Continue = () => {
+  const handleStep2Continue = async () => {
     if (reservationData.companions.length === 0 || validateStep2()) {
-      setShowSummary(true); setCurrentStep(3);
+      const people = 1 + reservationData.companions.length;
+      const pricingReady = await applyCurrentPricing(people);
+      if (!pricingReady) {
+        alert('No fue posible calcular la tarifa actual del plan. Intenta nuevamente.');
+        return;
+      }
+      setShowSummary(true);
+      setCurrentStep(3);
       setTimeout(() => document.getElementById('reservation-summary')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     } else setShowSummary(false);
   };
