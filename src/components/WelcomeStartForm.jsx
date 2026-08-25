@@ -12,9 +12,13 @@ const WelcomeStartForm = ({
   isValid,
   clientStatus,
   selectedTourId,
+  selectedGroupId,
   onTourChange,
+  onSubplanChange,
   tours,
+  subplans = [],
   loading,
+  loadingSubplans,
   acceptedTerms,
   onTermsChange,
   isProcessing,
@@ -29,7 +33,10 @@ const WelcomeStartForm = ({
   const searchInputRef = useRef(null);
   const phoneContainerRef = useRef(null);
 
-  const selectedTour = tours.find((tour) => String(tour.id) === String(selectedTourId));
+  const selectedMainTour = tours.find((tour) => String(tour.id) === String(selectedGroupId || selectedTourId));
+  const selectedSubplan = subplans.find((tour) => String(tour.id) === String(selectedTourId));
+  const selectedIsGroup = Boolean(selectedMainTour?.es_grupo);
+
   const filteredTours = !searchTerm.trim()
     ? tours
     : tours.filter((tour) => {
@@ -43,7 +50,11 @@ const WelcomeStartForm = ({
     checking: isEnglish ? 'Checking client' : 'Verificando cliente',
     found: isEnglish ? 'Existing client' : 'Cliente encontrado',
     newClient: isEnglish ? 'New client' : 'Cliente nuevo',
-    processing: isEnglish ? 'Processing...' : 'Procesando...'
+    processing: isEnglish ? 'Processing...' : 'Procesando...',
+    chooseRoute: isEnglish ? 'Choose your route' : 'Elige la ruta de Buggy',
+    routePlaceholder: isEnglish ? 'Select a route' : 'Selecciona una ruta',
+    routesAvailable: isEnglish ? 'Choose route' : 'Ver rutas',
+    loadingRoutes: isEnglish ? 'Loading routes...' : 'Cargando rutas...'
   };
 
   useEffect(() => {
@@ -134,10 +145,12 @@ const WelcomeStartForm = ({
               onClick={() => setIsTourDropdownOpen((open) => !open)}
               className={`w-full px-6 py-4 bg-brand-light/30 dark:bg-dark-bg-main/50 border-2 rounded-full text-left transition-all flex items-center justify-between gap-4 ${isTourDropdownOpen ? 'border-brand-primary ring-4 ring-brand-primary/5' : 'border-brand-border dark:border-dark-border hover:border-brand-primary/50'}`}
             >
-              {selectedTour ? (
+              {selectedMainTour ? (
                 <div className="min-w-0">
-                  <p className="text-brand-text-main dark:text-dark-text-main font-bold text-sm md:text-base truncate">{selectedTour.name}</p>
-                  <p className="text-brand-primary font-black text-sm mt-1">${Number(selectedTour.price || 0).toLocaleString('es-CO')}</p>
+                  <p className="text-brand-text-main dark:text-dark-text-main font-bold text-sm md:text-base truncate">{selectedMainTour.name}</p>
+                  <p className="text-brand-primary font-black text-sm mt-1">
+                    {selectedMainTour.es_grupo ? copy.routesAvailable : `$${Number(selectedMainTour.price || 0).toLocaleString('es-CO')}`}
+                  </p>
                 </div>
               ) : (
                 <span className="text-brand-text-secondary/60 dark:text-dark-text-secondary/60 font-bold text-sm md:text-base">{t('welcome.experience_placeholder')}</span>
@@ -170,10 +183,12 @@ const WelcomeStartForm = ({
                           setIsTourDropdownOpen(false);
                           setSearchTerm('');
                         }}
-                        className={`w-full px-5 py-4 text-left border-b border-brand-light dark:border-dark-border last:border-0 transition-colors ${String(selectedTourId) === String(tour.id) ? 'bg-brand-primary/10' : 'hover:bg-brand-light/50 dark:hover:bg-dark-bg-main/50'}`}
+                        className={`w-full px-5 py-4 text-left border-b border-brand-light dark:border-dark-border last:border-0 transition-colors ${String(selectedGroupId || selectedTourId) === String(tour.id) ? 'bg-brand-primary/10' : 'hover:bg-brand-light/50 dark:hover:bg-dark-bg-main/50'}`}
                       >
                         <p className="font-bold text-sm text-brand-text-main dark:text-dark-text-main">{tour.name}</p>
-                        <p className="text-brand-primary font-black text-sm mt-1">${Number(tour.price || 0).toLocaleString('es-CO')}</p>
+                        <p className="text-brand-primary font-black text-sm mt-1">
+                          {tour.es_grupo ? copy.routesAvailable : `$${Number(tour.price || 0).toLocaleString('es-CO')}`}
+                        </p>
                       </button>
                     ))
                   ) : (
@@ -184,6 +199,37 @@ const WelcomeStartForm = ({
             )}
           </div>
         </div>
+
+        {selectedIsGroup && (
+          <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+            <label className="text-[10px] font-black text-brand-primary uppercase tracking-[0.2em] ml-4">
+              🚙 {copy.chooseRoute}
+            </label>
+            <div className="relative">
+              <select
+                value={selectedTourId}
+                onChange={(event) => onSubplanChange(event.target.value)}
+                disabled={loadingSubplans || !subplans.length}
+                className="w-full appearance-none px-6 py-4 pr-12 bg-brand-light/30 dark:bg-dark-bg-main/50 border-2 border-brand-border dark:border-dark-border rounded-full text-brand-text-main dark:text-dark-text-main font-bold text-sm md:text-base outline-none focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/5 disabled:opacity-60"
+              >
+                <option value="">{loadingSubplans ? copy.loadingRoutes : copy.routePlaceholder}</option>
+                {subplans.map((route) => (
+                  <option key={route.id} value={String(route.id)}>
+                    {route.name} · ${Number(route.price || 0).toLocaleString('es-CO')}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-brand-primary">⌄</span>
+            </div>
+            {selectedSubplan && (
+              <div className="mx-2 rounded-2xl border border-brand-primary/20 bg-brand-primary/5 px-4 py-3">
+                <p className="text-xs font-black text-brand-text-main dark:text-dark-text-main">{selectedSubplan.name}</p>
+                <p className="text-sm font-black text-brand-primary mt-1">Desde ${Number(selectedSubplan.price || 0).toLocaleString('es-CO')}</p>
+                <p className="text-[10px] text-brand-text-secondary dark:text-dark-text-secondary mt-1">El valor final depende de si viaja 1 o 2 personas en el Buggy.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="space-y-4 pt-2">
           <p className="text-[11px] text-brand-text-secondary dark:text-dark-text-secondary leading-relaxed ml-1">{t('welcome.terms_authorize')}</p>
