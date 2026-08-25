@@ -3,7 +3,9 @@ export const getTours = async () => {
   try {
     const { data, error } = await supabase
       .from('plan')
-      .select('id_plan, nombre_plan, precio_plan, descripcion_basica, tipo_fecha, tipo_hora, imagen_url, numero_plan')
+      .select('id_plan, nombre_plan, precio_plan, descripcion_basica, tipo_fecha, tipo_hora, imagen_url, numero_plan, activo, es_grupo, id_plan_padre')
+      .eq('activo', true)
+      .is('id_plan_padre', null)
       .order('id_plan', { ascending: true })
 
     if (error) {
@@ -15,7 +17,9 @@ export const getTours = async () => {
       return []
     }
 
-    // Mapeamos los nombres de la DB a los nombres que usa el Frontend
+    // Solo se exponen al selector principal los planes activos de primer nivel.
+    // Los subplanes (por ejemplo, rutas de Buggys) se cargarán después de elegir
+    // su grupo principal y nunca deben aparecer mezclados con los planes normales.
     return data.map(item => ({
       id: item.id_plan,
       name: item.nombre_plan,
@@ -24,7 +28,10 @@ export const getTours = async () => {
       tipo_fecha: item.tipo_fecha,
       tipo_hora: item.tipo_hora,
       imagen_url: item.imagen_url,
-      numero_plan: item.numero_plan
+      numero_plan: item.numero_plan,
+      activo: item.activo,
+      es_grupo: item.es_grupo,
+      id_plan_padre: item.id_plan_padre
     }))
   } catch (err) {
     console.error('--- ERROR INESPERADO ---', err);
