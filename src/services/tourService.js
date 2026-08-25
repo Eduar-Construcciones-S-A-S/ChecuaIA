@@ -52,7 +52,44 @@ export const getSubplans = async (parentPlanId) => {
       return []
     }
 
-    return (data ?? []).map(mapPlan)
+    const plans = (data ?? []).map(mapPlan)
+    if (!plans.length) return []
+
+    // Las tarifas se consultan aparte para no hacer depender la carga de rutas
+    // de una relación embebida de PostgREST. Para los Buggies, precio_persona
+    // es unitario, así que el total visible se calcula multiplicando por la
+    // cantidad mínima de personas de cada tarifa (1 o 2).
+    const planIds = plans.map(plan => plan.id)
+    const { data: tariffData, error: tariffError } = await supabase
+      .from('plan_tarifa')
+      .select('id_plan, personas_min, personas_max, precio_persona, tipo_dia, activo')
+      .in('id_plan', planIds)
+      .eq('activo', true)
+      .order('personas_min', { ascending: true })
+
+    if (tariffError) {
+      console.warn('--- NO SE PUDIERON CARGAR TARIFAS DE SUBPLANES ---', tariffError.message)
+      return plans.map(plan => ({ ...plan, tariffs: [] }))
+    }
+
+    const tariffsByPlan = (tariffData ?? []).reduce((acc, tariff) => {
+      const key = String(tariff.id_plan)
+      if (!acc[key]) acc[key] = []
+      const people = Number(tariff.personas_min || 1)
+      acc[key].push({
+        peopleMin: people,
+        peopleMax: Number(tariff.personas_max || people),
+        unitPrice: Number(tariff.precio_persona || 0),
+        totalPrice: Number(tariff.precio_persona || 0) * people,
+        dayType: tariff.tipo_dia
+      })
+      return acc
+    }, {})
+
+    return plans.map(plan => ({
+      ...plan,
+      tariffs: tariffsByPlan[String(plan.id)] || []
+    }))
   } catch (err) {
     console.error('--- ERROR INESPERADO EN SUBPLANES ---', err)
     return []
