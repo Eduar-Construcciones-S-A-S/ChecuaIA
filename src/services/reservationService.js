@@ -7,6 +7,13 @@ const normalizePhone = (phone) => {
   return digits ? `+${digits}` : ''
 }
 
+const normalizeTime = (value) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  if (/^\d{1,2}:\d{2}$/.test(raw)) return `${raw}:00`
+  return raw.length >= 8 ? raw.slice(0, 8) : raw
+}
+
 const resolveDateId = async (planId, selectedDate) => {
   if (!planId || !selectedDate) return { id: null, error: null }
   const dateValue = String(selectedDate).slice(0, 10)
@@ -19,8 +26,7 @@ const resolveDateId = async (planId, selectedDate) => {
 
 const resolveHourId = async (planId, selectedTime) => {
   if (!planId || !selectedTime) return { id: null, error: null }
-  const rawTime = String(selectedTime).trim()
-  const timeValue = /^\d{1,2}:\d{2}$/.test(rawTime) ? `${rawTime}:00` : rawTime
+  const timeValue = normalizeTime(selectedTime)
   const { data: existingHour, error } = await supabase
     .from('plan_horas')
     .select('id_hora')
@@ -47,7 +53,12 @@ const resolveAppliedPricing = async (reservation) => {
   let totalPrice
 
   if (plan.tipo_fecha === 'cualquier_dia') {
-    const automatic = await getAutomaticPlanPricing({ planId, people, date })
+    const automatic = await getAutomaticPlanPricing({
+      planId,
+      people,
+      date,
+      isHoliday: Boolean(reservation.es_festivo_colombia)
+    })
     if (automatic.error) return { error: automatic.error }
     unitPrice = Number(automatic.unitPrice)
     totalPrice = Number(automatic.totalPrice)
@@ -64,21 +75,33 @@ const resolveAppliedPricing = async (reservation) => {
   return { unitPrice, totalPrice, depositAmount, error: null }
 }
 
-const findEquivalentPendingReservation = async ({ phone, planId, idFecha, idHora, people }) => {
+const findEquivalentPendingReservation = async ({ phone, planId, people, selectedDate, selectedTime }) => {
+  const dateValue = String(selectedDate || '').slice(0, 10)
+  const timeValue = normalizeTime(selectedTime)
+
   const { data, error } = await supabase
     .from('reserva')
-    .select('*')
+    .select(`
+      *,
+      plan_fechas!reserva_id_fecha_fkey(fecha),
+      plan_horas!reserva_id_hora_fkey(hora)
+    `)
     .eq('telefono_cliente', phone)
     .eq('id_plan', planId)
-    .eq('id_fecha', idFecha)
-    .eq('id_hora', idHora)
     .eq('cantidad_personas', people)
     .eq('aprobado', false)
     .order('fecha_solicitud', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    .limit(20)
 
-  return { data, error }
+  if (error) return { data: null, error }
+
+  const existing = (data || []).find((row) => {
+    const rowDate = String(row.plan_fechas?.fecha || '').slice(0, 10)
+    const rowTime = normalizeTime(row.plan_horas?.hora)
+    return rowDate === dateValue && rowTime === timeValue
+  })
+
+  return { data: existing || null, error: null }
 }
 
 export const getReservationsByPhone = async (phone) => {
@@ -111,6 +134,25 @@ export const createReservation = async (reservation) => {
     const people = Number(reservation.cantidad_personas || 1)
     const phone = normalizePhone(reservation.telefono_cliente)
 
+    // Primero se compara por los valores reales de fecha y hora. No dependemos de
+    // id_fecha/id_hora porque esos IDs pueden ser distintos para el mismo valor.
+    const { data: existing, error: existingError } = await findEquivalentPendingReservation({
+      phone,
+      planId,
+      people,
+      selectedDate,
+      selectedTime
+    })
+
+    if (existingError) {
+      console.error('Error al verificar reserva duplicada:', existingError)
+      return { data: null, error: existingError }
+    }
+
+    if (existing) {
+      return { data: existing, error: null, reused: true }
+    }
+
     const { id: idFecha, error: dateError } = await resolveDateId(planId, selectedDate)
     if (dateError || !idFecha) {
       const error = dateError || new Error('No se pudo obtener id_fecha para la reserva')
@@ -123,24 +165,6 @@ export const createReservation = async (reservation) => {
       const error = hourError || new Error('No se encontró id_hora para la hora seleccionada')
       console.error('Error al resolver la hora de la reserva:', error)
       return { data: null, error }
-    }
-
-    // Idempotencia: si ya existe una reserva pendiente equivalente, se reutiliza.
-    const { data: existing, error: existingError } = await findEquivalentPendingReservation({
-      phone,
-      planId,
-      idFecha,
-      idHora,
-      people
-    })
-
-    if (existingError) {
-      console.error('Error al verificar reserva duplicada:', existingError)
-      return { data: null, error: existingError }
-    }
-
-    if (existing) {
-      return { data: existing, error: null, reused: true }
     }
 
     const pricing = await resolveAppliedPricing(reservation)
