@@ -20,6 +20,13 @@ const normalizeNullableDateTime = (value) => {
   return text === '' ? null : text
 }
 
+const buildReservationDateTime = (date, time) => {
+  const dateValue = String(date || '').slice(0, 10)
+  const timeValue = normalizeTime(time)
+  if (!dateValue || !timeValue) return null
+  return `${dateValue}T${timeValue}`
+}
+
 const resolveDateId = async (planId, selectedDate) => {
   if (!planId || !selectedDate) return { id: null, error: null }
   const dateValue = String(selectedDate).slice(0, 10)
@@ -112,7 +119,7 @@ export const getReservationsByPhone = async (phone) => {
 
     const { data, error } = await supabase
       .from('reserva')
-      .select('id_reserva, codigo_reserva, id_plan, id_fecha, id_hora, cantidad_personas, precio_unitario, valor_total, valor_abonado, valor_saldo_pagado, aprobado, fecha_solicitud, fecha_aprobacion, telefono_cliente')
+      .select('id_reserva, codigo_reserva, id_plan, id_fecha, id_hora, cantidad_personas, precio_unitario, valor_total, valor_abonado, valor_saldo_pagado, aprobado, fecha_solicitud, fecha_reserva, fecha_aprobacion, telefono_cliente')
       .eq('telefono_cliente', normalizedPhone)
       .order('fecha_solicitud', { ascending: false })
 
@@ -172,6 +179,8 @@ export const createReservation = async (reservation) => {
       return { data: null, error: pricing.error }
     }
 
+    const reservationDateTime = buildReservationDateTime(selectedDate, selectedTime)
+
     const payload = {
       id_plan: planId,
       id_fecha: idFecha,
@@ -184,6 +193,7 @@ export const createReservation = async (reservation) => {
       valor_saldo_pagado: 0,
       aprobado: reservation.aprobado ?? false,
       fecha_solicitud: normalizeNullableDateTime(reservation.fecha_solicitud) ?? new Date().toISOString(),
+      fecha_reserva: reservationDateTime,
       fecha_aprobacion: normalizeNullableDateTime(reservation.fecha_aprobacion)
     }
 
