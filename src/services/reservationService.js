@@ -14,6 +14,12 @@ const normalizeTime = (value) => {
   return raw.length >= 8 ? raw.slice(0, 8) : raw
 }
 
+const normalizeNullableDateTime = (value) => {
+  if (value === null || value === undefined) return null
+  const text = String(value).trim()
+  return text === '' ? null : text
+}
+
 const resolveDateId = async (planId, selectedDate) => {
   if (!planId || !selectedDate) return { id: null, error: null }
   const dateValue = String(selectedDate).slice(0, 10)
@@ -79,8 +85,6 @@ const findEquivalentPendingReservation = async ({ phone, planId, people, selecte
   const dateValue = String(selectedDate || '').slice(0, 10)
   const timeValue = normalizeTime(selectedTime)
 
-  // El filtro se hace en Supabase por los VALORES reales de fecha y hora.
-  // !inner evita depender de id_fecha/id_hora, que pueden variar aunque el valor sea igual.
   const { data, error } = await supabase
     .from('reserva')
     .select(`
@@ -179,8 +183,8 @@ export const createReservation = async (reservation) => {
       valor_abonado: pricing.depositAmount,
       valor_saldo_pagado: 0,
       aprobado: reservation.aprobado ?? false,
-      fecha_solicitud: reservation.fecha_solicitud ?? new Date().toISOString(),
-      fecha_aprobacion: reservation.fecha_aprobacion ?? null
+      fecha_solicitud: normalizeNullableDateTime(reservation.fecha_solicitud) ?? new Date().toISOString(),
+      fecha_aprobacion: normalizeNullableDateTime(reservation.fecha_aprobacion)
     }
 
     const { data, error } = await supabase
