@@ -132,7 +132,7 @@
     "registered_companions": "Acompañantes registrados",
     "companions_notice": "Pronto podrás registrar los acompañantes de la reserva.",
     "verify_data_hint": "* Por favor verifica que todos los datos sean correctos antes de proceder.",
-    "proceed_to_payment": "Proceder con el pago",
+    "proceed_to_payment": "Enviar formulario y métodos de pago",
     "payment_block": {
       "title": "💳 INFORMACIÓN DE PAGO",
       "subtitle": "Tu reserva puede confirmarse pagando únicamente el 30% del valor total.",
