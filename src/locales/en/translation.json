@@ -132,7 +132,7 @@
     "registered_companions": "Registered companions",
     "companions_notice": "Soon you will be able to register the reservation companions.",
     "verify_data_hint": "* Please verify that all data is correct before proceeding.",
-    "proceed_to_payment": "Proceed to payment",
+    "proceed_to_payment": "Submit form and view payment methods",
     "payment_block": {
       "title": "💳 PAYMENT INFORMATION",
       "subtitle": "Your reservation can be confirmed by paying only 30% of the total amount.",
