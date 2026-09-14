@@ -27,6 +27,22 @@ const PaymentModal = ({
     ? 'Send the payment receipt for the amount or remaining balance indicated or agreed with your advisor so we can validate your reservation.'
     : 'Envía el comprobante de pago del valor o saldo que nuestro asesor te haya indicado o que hayas pactado para validar tu reserva.';
 
+  const paymentOptionsTitle = isEnglish
+    ? 'PAYMENT OPTIONS AVAILABLE'
+    : 'OPCIONES DE PAGO DISPONIBLES';
+
+  const paymentOptionsText = isEnglish
+    ? 'Below you will find the accounts enabled to make your payment. Choose the option you prefer and use the COPY button to copy the account number, Bancolombia key or mobile number.'
+    : 'A continuación encontrarás las cuentas habilitadas para realizar tu pago. Elige la opción que prefieras y usa el botón COPIAR para copiar fácilmente el número de cuenta, la llave Bancolombia o el número de celular.';
+
+  const returnInstructionTitle = isEnglish
+    ? 'IMPORTANT: AFTER MAKING THE PAYMENT'
+    : 'IMPORTANTE: DESPUÉS DE REALIZAR EL PAGO';
+
+  const returnInstructionText = isEnglish
+    ? 'Return to this screen and press the SEND RECEIPT BY WHATSAPP button below. We need your receipt to validate the payment and continue with the reservation confirmation.'
+    : 'Vuelve a esta pantalla y pulsa el botón ENVIAR COMPROBANTE POR WHATSAPP que está abajo. Necesitamos el comprobante para validar el pago y continuar con la confirmación de tu reserva.';
+
   const handleCopy = (text, field) => {
     navigator.clipboard.writeText(text);
     setCopiedField(field);
@@ -105,6 +121,20 @@ const PaymentModal = ({
             </div>
           </div>
 
+          <div className="rounded-[1.25rem] border-2 border-brand-primary bg-brand-primary/10 p-4 sm:p-5 shadow-[0_0_28px_-12px_rgba(140,201,21,0.95)]">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-brand-primary text-white flex items-center justify-center shrink-0 shadow-md">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-[10px] sm:text-xs font-black uppercase tracking-[0.14em] text-brand-primary mb-1.5">{paymentOptionsTitle}</p>
+                <p className="text-xs sm:text-sm font-bold text-brand-text-main dark:text-dark-text-main leading-relaxed">{paymentOptionsText}</p>
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-3">
             <div className="p-3 sm:p-4 bg-white dark:bg-dark-bg-card border-2 border-brand-border dark:border-dark-border rounded-[1.25rem] space-y-3">
               <div className="flex items-center gap-3">
@@ -129,8 +159,11 @@ const PaymentModal = ({
             </div>
           </div>
 
-          <div className="bg-brand-primary/5 border border-brand-primary/20 rounded-[1.25rem] p-4 space-y-3">
-            <p className="text-[10px] sm:text-xs font-bold text-brand-dark dark:text-brand-primary text-center leading-relaxed">{subjectToAdvisor ? advisorPaymentInstruction : t('summary.payment.whatsapp_instruction')}</p>
+          <div className="bg-brand-primary/10 border-2 border-brand-primary/50 rounded-[1.25rem] p-4 space-y-3 shadow-[0_0_24px_-14px_rgba(140,201,21,0.9)]">
+            <div className="text-center">
+              <p className="text-[10px] sm:text-xs font-black uppercase tracking-[0.13em] text-brand-primary mb-2">{returnInstructionTitle}</p>
+              <p className="text-[10px] sm:text-xs font-bold text-brand-text-main dark:text-dark-text-main text-center leading-relaxed">{subjectToAdvisor ? advisorPaymentInstruction : returnInstructionText}</p>
+            </div>
             <button type="button" onClick={handleWhatsApp} className="w-full px-4 py-3 bg-[#25D366] text-white font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-full shadow-lg hover:scale-[1.01] active:scale-95 transition-all">
               <span className="mx-auto inline-flex max-w-full items-center justify-center gap-2"><svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.04 2a9.84 9.84 0 00-8.43 14.92L2 22l5.22-1.54A9.98 9.98 0 1012.04 2zm0 17.99a8.1 8.1 0 01-4.13-1.13l-.3-.18-3.1.91.93-3.02-.2-.31a8.02 8.02 0 116.8 3.73zm4.45-6.03c-.24-.12-1.44-.71-1.66-.79-.22-.08-.38-.12-.54.12-.16.24-.63.79-.77.95-.14.16-.28.18-.52.06-.24-.12-1.03-.38-1.96-1.21a7.3 7.3 0 01-1.36-1.69c-.14-.24-.02-.37.1-.49.11-.11.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.54-1.3-.74-1.78-.2-.47-.4-.4-.54-.41h-.46c-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2s.86 2.32.98 2.48c.12.16 1.69 2.58 4.1 3.62.57.25 1.02.4 1.37.51.58.18 1.1.16 1.51.1.46-.07 1.44-.59 1.64-1.16.2-.57.2-1.06.14-1.16-.06-.1-.22-.16-.46-.28z" /></svg><span className="min-w-0 text-center leading-tight">{t('summary.payment.send_whatsapp')}</span></span>
             </button>
