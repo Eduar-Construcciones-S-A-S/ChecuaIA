@@ -58,6 +58,7 @@ const HomePage = ({
   const [isSaving, setIsSaving] = useState(false);
   const [planAdditions, setPlanAdditions] = useState([]);
   const [additionQuantities, setAdditionQuantities] = useState({});
+  const [additionTouched, setAdditionTouched] = useState({});
   const [loadingAdditions, setLoadingAdditions] = useState(false);
   const [paymentTotal, setPaymentTotal] = useState(null);
 
@@ -92,9 +93,8 @@ const HomePage = ({
       .then(items => {
         if (cancelled) return;
         setPlanAdditions(items);
-        setAdditionQuantities(Object.fromEntries(
-          items.map(item => [item.id_adicional, defaultAdditionQuantity(item, totalParticipants)])
-        ));
+        setAdditionQuantities({});
+        setAdditionTouched({});
         setPaymentTotal(null);
       })
       .finally(() => {
@@ -111,13 +111,15 @@ const HomePage = ({
         item.id_adicional,
         clampAdditionQuantity(
           item,
-          current[item.id_adicional] ?? defaultAdditionQuantity(item, totalParticipants),
+          additionTouched[item.id_adicional]
+            ? current[item.id_adicional]
+            : defaultAdditionQuantity(item, totalParticipants),
           totalParticipants
         )
       ])
     ));
     setPaymentTotal(null);
-  }, [totalParticipants, planAdditions]);
+  }, [totalParticipants, planAdditions, additionTouched]);
 
   const handleAdditionQuantityChange = (idAdicional, quantity) => {
     const item = planAdditions.find(addition => Number(addition.id_adicional) === Number(idAdicional));
@@ -126,6 +128,7 @@ const HomePage = ({
       ...current,
       [idAdicional]: clampAdditionQuantity(item, quantity, totalParticipants),
     }));
+    setAdditionTouched(current => ({ ...current, [idAdicional]: true }));
     setPaymentTotal(null);
   };
 
