@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { getAutomaticPlanPricing } from './pricingService'
+import { configurePublicReservationAdditions } from './additionService'
 
 const normalizePhone = (phone) => {
   if (!phone) return ''
@@ -18,6 +19,45 @@ const normalizeNullableDateTime = (value) => {
   if (value === null || value === undefined) return null
   const text = String(value).trim()
   return text === '' ? null : text
+}
+
+const isMissingAdditionsRpcError = (error) => {
+  const message = String(error?.message || '').toLowerCase()
+  return (
+    error?.code === '42883' ||
+    error?.code === 'PGRST202' ||
+    message.includes('configurar_adicionales_reserva_publica') && (
+      message.includes('does not exist') ||
+      message.includes('could not find')
+    )
+  )
+}
+
+const applyReservationAdditions = async (reservationRow, phone, selections = []) => {
+  if (!reservationRow?.id_reserva) return { data: reservationRow, error: null }
+
+  const { data, error } = await configurePublicReservationAdditions({
+    reservationId: reservationRow.id_reserva,
+    phone,
+    selections,
+  })
+
+  if (error) {
+    // Mantiene compatibilidad mientras se aplica la migración SQL de adicionales.
+    if (isMissingAdditionsRpcError(error)) {
+      console.warn('La función de adicionales aún no está instalada en Supabase. Se conserva la reserva base.')
+      return { data: reservationRow, error: null }
+    }
+    return { data: null, error }
+  }
+
+  return {
+    data: {
+      ...reservationRow,
+      ...(data || {}),
+    },
+    error: null,
+  }
 }
 
 const buildReservationDateTime = (date, time) => {
@@ -156,7 +196,16 @@ export const createReservation = async (reservation) => {
     }
 
     if (existing) {
-      return { data: existing, error: null, reused: true }
+      const additions = await applyReservationAdditions(
+        existing,
+        phone,
+        Array.isArray(reservation.adicionales) ? reservation.adicionales : []
+      )
+      if (additions.error) {
+        console.error('Error al aplicar adicionales a la reserva existente:', additions.error)
+        return { data: null, error: additions.error, reused: true }
+      }
+      return { data: additions.data, error: null, reused: true }
     }
 
     const { id: idFecha, error: dateError } = await resolveDateId(planId, selectedDate)
@@ -203,7 +252,20 @@ export const createReservation = async (reservation) => {
       .select()
       .single()
 
-    return { data, error, reused: false }
+    if (error || !data) return { data, error, reused: false }
+
+    const additions = await applyReservationAdditions(
+      data,
+      phone,
+      Array.isArray(reservation.adicionales) ? reservation.adicionales : []
+    )
+
+    if (additions.error) {
+      console.error('Error al aplicar adicionales a la nueva reserva:', additions.error)
+      return { data: null, error: additions.error, reused: false }
+    }
+
+    return { data: additions.data, error: null, reused: false }
   } catch (err) {
     console.error('Error in createReservation service:', err)
     return { data: null, error: err }

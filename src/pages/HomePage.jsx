@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReservationContactSection from '../components/ReservationContactSection';
 import TourSelectionSection from '../components/TourSelectionSection';
@@ -7,8 +7,16 @@ import TimeSelectionSection from '../components/TimeSelectionSection';
 import CompanionFormSection from '../components/CompanionFormSection';
 import PaymentModal from '../components/PaymentModal';
 import WelcomeModal from '../components/WelcomeModal';
+import ReservationAdditionsSection from '../components/ReservationAdditionsSection';
 import { saveParticipantsForReservation } from '../services/participantService';
 import { createReservation } from '../services/reservationService';
+import {
+  calculateAdditionsImpact,
+  clampAdditionQuantity,
+  defaultAdditionQuantity,
+  getPlanAdditions,
+  normalizeAdditionSelections,
+} from '../services/additionService';
 import { getCountryName } from '../utils/countries';
 import { CountryFlagImg } from '../utils/CountryFlagImg.jsx';
 
@@ -48,6 +56,11 @@ const HomePage = ({
   const { t, i18n } = useTranslation();
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [planAdditions, setPlanAdditions] = useState([]);
+  const [additionQuantities, setAdditionQuantities] = useState({});
+  const [additionTouched, setAdditionTouched] = useState({});
+  const [loadingAdditions, setLoadingAdditions] = useState(false);
+  const [paymentTotal, setPaymentTotal] = useState(null);
 
   const calculateAge = (birthDateStr) => {
     if (!birthDateStr) return null;
@@ -63,7 +76,65 @@ const HomePage = ({
   };
 
   const totalParticipants = 1 + (reservationData.companions?.length || 0);
-  const totalPrice = (reservationData.tour.precio_por_persona || 0) * totalParticipants;
+
+  useEffect(() => {
+    let cancelled = false;
+    const planId = reservationData.tour.id_plan;
+
+    if (!planId) {
+      setPlanAdditions([]);
+      setAdditionQuantities({});
+      setPaymentTotal(null);
+      return undefined;
+    }
+
+    setLoadingAdditions(true);
+    getPlanAdditions(planId)
+      .then(items => {
+        if (cancelled) return;
+        setPlanAdditions(items);
+        setAdditionQuantities({});
+        setAdditionTouched({});
+        setPaymentTotal(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAdditions(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [reservationData.tour.id_plan]);
+
+  useEffect(() => {
+    if (!planAdditions.length) return;
+    setAdditionQuantities(current => Object.fromEntries(
+      planAdditions.map(item => [
+        item.id_adicional,
+        clampAdditionQuantity(
+          item,
+          additionTouched[item.id_adicional]
+            ? current[item.id_adicional]
+            : defaultAdditionQuantity(item, totalParticipants),
+          totalParticipants
+        )
+      ])
+    ));
+    setPaymentTotal(null);
+  }, [totalParticipants, planAdditions, additionTouched]);
+
+  const handleAdditionQuantityChange = (idAdicional, quantity) => {
+    const item = planAdditions.find(addition => Number(addition.id_adicional) === Number(idAdicional));
+    if (!item) return;
+    setAdditionQuantities(current => ({
+      ...current,
+      [idAdicional]: clampAdditionQuantity(item, quantity, totalParticipants),
+    }));
+    setAdditionTouched(current => ({ ...current, [idAdicional]: true }));
+    setPaymentTotal(null);
+  };
+
+  const baseTotalPrice = (reservationData.tour.precio_por_persona || 0) * totalParticipants;
+  const additionsImpact = calculateAdditionsImpact(planAdditions, additionQuantities, totalParticipants);
+  const totalPrice = Math.max(0, baseTotalPrice + additionsImpact);
   const depositAmount = Math.round(totalPrice * 0.3);
   const remainingAmount = totalPrice - depositAmount;
 
@@ -95,7 +166,8 @@ const HomePage = ({
         cantidad_personas: totalParticipants,
         aprobado: false,
         fecha_solicitud: new Date().toISOString(),
-        fecha_aprobacion: null
+        fecha_aprobacion: null,
+        adicionales: normalizeAdditionSelections(planAdditions, additionQuantities, totalParticipants)
       };
 
       const { data: reservationCreated, error: reservationError } = await createReservation(reservationPayload);
@@ -148,6 +220,7 @@ const HomePage = ({
       console.log('Participantes guardados:', data);
       console.log('Total de referencia:', totalPrice);
 
+      setPaymentTotal(Number(reservationCreated?.valor_total || totalPrice));
       setIsPaymentModalOpen(true);
     } catch (err) {
       console.error('Error inesperado al procesar participantes:', err);
@@ -615,6 +688,31 @@ const HomePage = ({
                             <span className="text-sm font-black text-brand-text-main dark:text-dark-text-main whitespace-nowrap">{totalParticipants} Persona(s)</span>
                           </div>
 
+                          <ReservationAdditionsSection
+                            items={planAdditions}
+                            quantities={additionQuantities}
+                            people={totalParticipants}
+                            onChange={handleAdditionQuantityChange}
+                            formatCurrency={formatCurrency}
+                            isEnglish={isEnglish}
+                            loading={loadingAdditions}
+                          />
+
+                          {!subjectToAdvisor && planAdditions.length > 0 && additionsImpact !== 0 && (
+                            <div className="rounded-[1.25rem] border border-brand-primary/15 bg-white/50 dark:bg-dark-bg-card/40 p-4 space-y-2">
+                              <div className="flex items-center justify-between gap-3 text-xs">
+                                <span className="font-bold text-brand-text-secondary dark:text-dark-text-secondary">{isEnglish ? 'Base plan' : 'Plan base'}</span>
+                                <span className="font-black text-brand-text-main dark:text-dark-text-main">{formatCOP(baseTotalPrice)}</span>
+                              </div>
+                              <div className="flex items-center justify-between gap-3 text-xs">
+                                <span className="font-bold text-brand-text-secondary dark:text-dark-text-secondary">{isEnglish ? 'Add-ons adjustment' : 'Ajuste por adicionales'}</span>
+                                <span className={`font-black ${additionsImpact > 0 ? 'text-brand-primary' : 'text-amber-600 dark:text-amber-300'}`}>
+                                  {additionsImpact > 0 ? '+' : '−'}{formatCOP(Math.abs(additionsImpact))}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
                           {subjectToAdvisor ? (
                             <div className="rounded-[1.5rem] border-2 border-amber-400/40 bg-amber-400/10 p-5 sm:p-6 text-center space-y-3">
                               <div className="mx-auto w-11 h-11 rounded-full bg-amber-400/15 flex items-center justify-center text-xl" aria-hidden="true">⚠️</div>
@@ -748,7 +846,7 @@ const HomePage = ({
             onClose={() => setIsPaymentModalOpen(false)}
             experience={reservationData.tour.tour_reserva}
             participants={totalParticipants}
-            totalAmount={totalPrice}
+            totalAmount={paymentTotal ?? totalPrice}
             formatCurrency={formatCurrency}
             subjectToAdvisor={subjectToAdvisor}
           />
