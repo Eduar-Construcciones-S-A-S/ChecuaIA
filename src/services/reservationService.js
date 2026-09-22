@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase'
 import { getAutomaticPlanPricing } from './pricingService'
 import { configurePublicReservationAdditions } from './additionService'
+import { buildBuggyObservation, calculateBuggyPricing } from './buggyService'
 
 const normalizePhone = (phone) => {
   if (!phone) return ''
@@ -104,8 +105,22 @@ const resolveAppliedPricing = async (reservation) => {
 
   let unitPrice
   let totalPrice
+  let buggyPricing = null
 
-  if (plan.tipo_fecha === 'cualquier_dia') {
+  if (reservation.buggy_configuracion) {
+    const buggy = await calculateBuggyPricing({
+      planId,
+      people,
+      date,
+      buggyCount: reservation.buggy_configuracion.buggyCount,
+    })
+
+    if (buggy.error) return { error: buggy.error }
+
+    buggyPricing = buggy
+    unitPrice = Number(buggy.averageUnitPrice)
+    totalPrice = Number(buggy.totalPrice)
+  } else if (plan.tipo_fecha === 'cualquier_dia') {
     const automatic = await getAutomaticPlanPricing({
       planId,
       people,
@@ -125,7 +140,7 @@ const resolveAppliedPricing = async (reservation) => {
   }
 
   const depositAmount = Math.round(totalPrice * 0.3)
-  return { unitPrice, totalPrice, depositAmount, error: null }
+  return { unitPrice, totalPrice, depositAmount, buggyPricing, error: null }
 }
 
 const findEquivalentPendingReservation = async ({ phone, planId, people, selectedDate, selectedTime }) => {
@@ -182,6 +197,12 @@ export const createReservation = async (reservation) => {
     const people = Number(reservation.cantidad_personas || 1)
     const phone = normalizePhone(reservation.telefono_cliente)
 
+    const pricing = await resolveAppliedPricing(reservation)
+    if (pricing.error) {
+      console.error('Error al resolver el precio aplicado a la reserva:', pricing.error)
+      return { data: null, error: pricing.error }
+    }
+
     const { data: existing, error: existingError } = await findEquivalentPendingReservation({
       phone,
       planId,
@@ -196,8 +217,36 @@ export const createReservation = async (reservation) => {
     }
 
     if (existing) {
+      let existingReservation = existing
+
+      if (reservation.buggy_configuracion) {
+        const observation = buildBuggyObservation({
+          configuration: reservation.buggy_configuracion,
+          pricing: pricing.buggyPricing,
+        })
+
+        const { data: updatedReservation, error: updateError } = await supabase
+          .from('reserva')
+          .update({
+            precio_unitario: pricing.unitPrice,
+            valor_total: pricing.totalPrice,
+            valor_abonado: pricing.depositAmount,
+            observacion: observation,
+          })
+          .eq('id_reserva', existing.id_reserva)
+          .select()
+          .single()
+
+        if (updateError) {
+          console.error('Error al actualizar la configuración de Buggies:', updateError)
+          return { data: null, error: updateError, reused: true }
+        }
+
+        existingReservation = updatedReservation
+      }
+
       const additions = await applyReservationAdditions(
-        existing,
+        existingReservation,
         phone,
         Array.isArray(reservation.adicionales) ? reservation.adicionales : []
       )
@@ -222,13 +271,13 @@ export const createReservation = async (reservation) => {
       return { data: null, error }
     }
 
-    const pricing = await resolveAppliedPricing(reservation)
-    if (pricing.error) {
-      console.error('Error al resolver el precio aplicado a la reserva:', pricing.error)
-      return { data: null, error: pricing.error }
-    }
-
     const reservationDateTime = buildReservationDateTime(selectedDate, selectedTime)
+    const buggyObservation = reservation.buggy_configuracion
+      ? buildBuggyObservation({
+          configuration: reservation.buggy_configuracion,
+          pricing: pricing.buggyPricing,
+        })
+      : null
 
     const payload = {
       id_plan: planId,
@@ -243,7 +292,8 @@ export const createReservation = async (reservation) => {
       aprobado: reservation.aprobado ?? false,
       fecha_solicitud: normalizeNullableDateTime(reservation.fecha_solicitud) ?? new Date().toISOString(),
       fecha_reserva: reservationDateTime,
-      fecha_aprobacion: normalizeNullableDateTime(reservation.fecha_aprobacion)
+      fecha_aprobacion: normalizeNullableDateTime(reservation.fecha_aprobacion),
+      observacion: buggyObservation ?? reservation.observacion ?? null
     }
 
     const { data, error } = await supabase
