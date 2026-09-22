@@ -137,6 +137,10 @@ const HomePage = ({
     setPaymentTotal(null);
   }, [totalParticipants, planAdditions, additionTouched]);
 
+  useEffect(() => {
+    setPaymentTotal(null);
+  }, [reservationData.buggy?.count, reservationData.buggy?.pricing?.totalPrice]);
+
   const handleAdditionQuantityChange = (idAdicional, quantity) => {
     const item = planAdditions.find(addition => Number(addition.id_adicional) === Number(idAdicional));
     if (!item) return;
