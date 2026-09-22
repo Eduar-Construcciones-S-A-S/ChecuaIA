@@ -3,6 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { getTours, getPlanDates, getPlanHours } from './services/tourService';
 import { getAutomaticPlanPricing } from './services/pricingService';
+import {
+  buildDefaultBuggyAssignments,
+  calculateBuggyPricing,
+  getBuggyShape
+} from './services/buggyService';
 import HomePage from './pages/HomePage';
 
 function App() {
@@ -44,14 +49,21 @@ function App() {
     },
     tour: {
       tour_reserva: '', precio_por_persona: null, precio_base: null, id_plan: null,
-      tipo_fecha: 'cualquier_dia', tipo_hora: 'sin_hora', availableDates: [], availableHours: []
+      tipo_fecha: 'cualquier_dia', tipo_hora: 'sin_hora', availableDates: [], availableHours: [],
+      is_buggy: false, group_name: null
     },
     date: {
       fecha_reserva: '', es_fin_de_semana: false, es_festivo_colombia: false,
       puede_variar_precio: false, rawDate: null
     },
     time: { hora_reserva: '', periodo: '', label: '' },
-    companions: []
+    companions: [],
+    buggy: {
+      enabled: false,
+      count: 0,
+      assignments: [],
+      pricing: null
+    }
   });
 
   const [errors, setErrors] = useState({});
@@ -65,12 +77,48 @@ function App() {
   const timeRef = useRef(null);
 
   const automaticPeople = 1 + (reservationData.companions?.length || 0);
+  const buggyParticipantKeys = [
+    'responsible',
+    ...(reservationData.companions || []).map((_, index) => `companion-${index}`)
+  ];
 
   const applyCurrentPricing = async (people = automaticPeople) => {
-    const { id_plan, precio_base } = reservationData.tour;
+    const { id_plan, precio_base, is_buggy } = reservationData.tour;
     const fecha = reservationData.date.fecha_reserva;
 
     if (!id_plan || !fecha) return true;
+
+    if (is_buggy) {
+      const shape = getBuggyShape(people, reservationData.buggy?.count);
+      const result = await calculateBuggyPricing({
+        planId: id_plan,
+        people,
+        date: fecha,
+        buggyCount: shape.buggyCount
+      });
+
+      if (!result.error && Number(result.totalPrice) > 0) {
+        setReservationData(prev => ({
+          ...prev,
+          buggy: {
+            ...prev.buggy,
+            enabled: true,
+            count: result.buggyCount,
+            assignments: prev.buggy.assignments?.length === result.buggyCount
+              ? prev.buggy.assignments
+              : buildDefaultBuggyAssignments(
+                  ['responsible', ...(prev.companions || []).map((_, index) => `companion-${index}`)],
+                  result.buggyCount
+                ),
+            pricing: result
+          }
+        }));
+        return true;
+      }
+
+      console.error('No fue posible calcular la distribución de Buggies:', result.error);
+      return false;
+    }
 
     const result = await getAutomaticPlanPricing({
       planId: id_plan,
@@ -107,10 +155,10 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    const { id_plan, precio_base } = reservationData.tour;
+    const { id_plan, precio_base, is_buggy } = reservationData.tour;
     const fecha = reservationData.date.fecha_reserva;
 
-    if (!id_plan || !fecha) return undefined;
+    if (!id_plan || !fecha || is_buggy) return undefined;
 
     getAutomaticPlanPricing({
       planId: id_plan,
@@ -143,7 +191,145 @@ function App() {
     });
 
     return () => { cancelled = true; };
-  }, [reservationData.tour.id_plan, reservationData.tour.precio_base, reservationData.date.fecha_reserva, automaticPeople]);
+  }, [reservationData.tour.id_plan, reservationData.tour.precio_base, reservationData.tour.is_buggy, reservationData.date.fecha_reserva, automaticPeople]);
+
+  useEffect(() => {
+    if (!reservationData.tour.is_buggy) return;
+
+    setReservationData(prev => {
+      const people = 1 + (prev.companions?.length || 0);
+      const keys = ['responsible', ...(prev.companions || []).map((_, index) => `companion-${index}`)];
+      const shape = getBuggyShape(people, prev.buggy?.count);
+      const assignedKeys = (prev.buggy?.assignments || [])
+        .flatMap(item => [item.driver, item.passenger])
+        .filter(Boolean)
+        .sort();
+      const expectedKeys = [...keys].sort();
+      const assignmentsAreValid =
+        prev.buggy?.assignments?.length === shape.buggyCount &&
+        assignedKeys.length === expectedKeys.length &&
+        assignedKeys.every((key, index) => key === expectedKeys[index]);
+
+      const nextAssignments = assignmentsAreValid
+        ? prev.buggy.assignments
+        : buildDefaultBuggyAssignments(keys, shape.buggyCount);
+
+      if (
+        prev.buggy?.enabled &&
+        prev.buggy?.count === shape.buggyCount &&
+        assignmentsAreValid
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        buggy: {
+          ...prev.buggy,
+          enabled: true,
+          count: shape.buggyCount,
+          assignments: nextAssignments,
+          pricing: assignmentsAreValid ? prev.buggy?.pricing : null
+        }
+      };
+    });
+  }, [reservationData.tour.is_buggy, automaticPeople]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (
+      !reservationData.tour.is_buggy ||
+      !reservationData.tour.id_plan ||
+      !reservationData.date.fecha_reserva
+    ) {
+      return undefined;
+    }
+
+    const shape = getBuggyShape(automaticPeople, reservationData.buggy?.count);
+
+    calculateBuggyPricing({
+      planId: reservationData.tour.id_plan,
+      people: automaticPeople,
+      date: reservationData.date.fecha_reserva,
+      buggyCount: shape.buggyCount
+    }).then(result => {
+      if (cancelled || result.error) return;
+      setReservationData(prev => ({
+        ...prev,
+        buggy: {
+          ...prev.buggy,
+          enabled: true,
+          count: result.buggyCount,
+          pricing: result
+        }
+      }));
+    });
+
+    return () => { cancelled = true; };
+  }, [
+    reservationData.tour.is_buggy,
+    reservationData.tour.id_plan,
+    reservationData.date.fecha_reserva,
+    automaticPeople,
+    reservationData.buggy?.count
+  ]);
+
+  const handleBuggyCountChange = (count) => {
+    setReservationData(prev => {
+      const keys = ['responsible', ...(prev.companions || []).map((_, index) => `companion-${index}`)];
+      const shape = getBuggyShape(keys.length, count);
+      return {
+        ...prev,
+        buggy: {
+          ...prev.buggy,
+          enabled: true,
+          count: shape.buggyCount,
+          assignments: buildDefaultBuggyAssignments(keys, shape.buggyCount),
+          pricing: null
+        }
+      };
+    });
+  };
+
+  const handleBuggySeatChange = (buggyIndex, seat, participantKey) => {
+    setReservationData(prev => {
+      const assignments = (prev.buggy?.assignments || []).map(item => ({ ...item }));
+      const target = assignments[buggyIndex];
+      if (!target || !participantKey || !['driver', 'passenger'].includes(seat)) return prev;
+      if (seat === 'passenger' && target.passenger == null) return prev;
+
+      const currentTargetKey = target[seat];
+      if (currentTargetKey === participantKey) return prev;
+
+      let sourceIndex = -1;
+      let sourceSeat = null;
+
+      assignments.forEach((item, index) => {
+        if (item.driver === participantKey) {
+          sourceIndex = index;
+          sourceSeat = 'driver';
+        } else if (item.passenger === participantKey) {
+          sourceIndex = index;
+          sourceSeat = 'passenger';
+        }
+      });
+
+      target[seat] = participantKey;
+
+      if (sourceIndex >= 0 && sourceSeat) {
+        assignments[sourceIndex][sourceSeat] = currentTargetKey;
+      }
+
+      return {
+        ...prev,
+        buggy: {
+          ...prev.buggy,
+          assignments
+        }
+      };
+    });
+  };
 
   const handleContactChange = (field, value) => {
     setReservationData(prev => ({ ...prev, contact: { ...prev.contact, [field]: value } }));
@@ -175,7 +361,9 @@ function App() {
           tipo_fecha: tour.tipo_fecha,
           tipo_hora: tour.tipo_hora,
           availableDates: dates,
-          availableHours: hours
+          availableHours: hours,
+          is_buggy: Boolean(tour.is_buggy),
+          group_name: tour.group_name || null
         };
 
         let newTimeData = { hora_reserva: '', periodo: '', label: '' };
@@ -188,7 +376,29 @@ function App() {
           newDateData = { fecha_reserva: '', es_fin_de_semana: false, es_festivo_colombia: false, puede_variar_precio: false, rawDate: null };
         }
 
-        return { ...prev, tour: newTourData, time: newTimeData, date: newDateData };
+        const people = 1 + (prev.companions?.length || 0);
+        const keys = ['responsible', ...(prev.companions || []).map((_, index) => `companion-${index}`)];
+        const initialBuggyCount = Math.ceil(people / 2);
+
+        return {
+          ...prev,
+          tour: newTourData,
+          time: newTimeData,
+          date: newDateData,
+          buggy: tour.is_buggy
+            ? {
+                enabled: true,
+                count: initialBuggyCount,
+                assignments: buildDefaultBuggyAssignments(keys, initialBuggyCount),
+                pricing: null
+              }
+            : {
+                enabled: false,
+                count: 0,
+                assignments: [],
+                pricing: null
+              }
+        };
       });
     } catch (error) {
       console.error('Error al cargar detalles del tour:', error);
@@ -390,6 +600,7 @@ function App() {
             showSummary={showSummary} setShowSummary={setShowSummary} handleEditInformation={handleEditInformation} handleAddCompanions={handleAddCompanions}
             setShowCompanionsSection={setShowCompanionsSection} addCompanion={addCompanion} removeCompanion={removeCompanion} handleCompanionChange={handleCompanionChange}
             errors={errors} contactRef={contactRef} tourRef={tourRef} dateRef={dateRef} timeRef={timeRef} currentStep={currentStep} setCurrentStep={setCurrentStep}
+            handleBuggyCountChange={handleBuggyCountChange} handleBuggySeatChange={handleBuggySeatChange}
           />
         } />
         <Route path="*" element={<Navigate to="/" replace />} />
