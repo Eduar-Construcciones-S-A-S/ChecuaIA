@@ -8,6 +8,7 @@ import CompanionFormSection from '../components/CompanionFormSection';
 import PaymentModal from '../components/PaymentModal';
 import WelcomeModal from '../components/WelcomeModal';
 import ReservationAdditionsSection from '../components/ReservationAdditionsSection';
+import BuggyAllocationSection from '../components/BuggyAllocationSection';
 import { saveParticipantsForReservation } from '../services/participantService';
 import { createReservation } from '../services/reservationService';
 import {
@@ -51,7 +52,9 @@ const HomePage = ({
   dateRef,
   timeRef,
   currentStep,
-  setCurrentStep
+  setCurrentStep,
+  handleBuggyCountChange,
+  handleBuggySeatChange
 }) => {
   const { t, i18n } = useTranslation();
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -76,6 +79,19 @@ const HomePage = ({
   };
 
   const totalParticipants = 1 + (reservationData.companions?.length || 0);
+  const isBuggy = Boolean(reservationData.tour.is_buggy);
+  const buggyParticipants = [
+    {
+      key: 'responsible',
+      name: reservationData.contact.nombre_jefe_reserva || (i18n.language?.startsWith('en') ? 'Responsible' : 'Responsable'),
+      document: reservationData.contact.numero_documento || ''
+    },
+    ...(reservationData.companions || []).map((companion, index) => ({
+      key: `companion-${index}`,
+      name: companion.nombre || `${i18n.language?.startsWith('en') ? 'Companion' : 'Acompañante'} ${index + 1}`,
+      document: companion.numero_documento || ''
+    }))
+  ];
 
   useEffect(() => {
     let cancelled = false;
@@ -132,7 +148,9 @@ const HomePage = ({
     setPaymentTotal(null);
   };
 
-  const baseTotalPrice = (reservationData.tour.precio_por_persona || 0) * totalParticipants;
+  const baseTotalPrice = isBuggy
+    ? Number(reservationData.buggy?.pricing?.totalPrice || 0)
+    : (reservationData.tour.precio_por_persona || 0) * totalParticipants;
   const additionsImpact = calculateAdditionsImpact(planAdditions, additionQuantities, totalParticipants);
   const totalPrice = Math.max(0, baseTotalPrice + additionsImpact);
   const depositAmount = Math.round(totalPrice * 0.3);
@@ -167,7 +185,17 @@ const HomePage = ({
         aprobado: false,
         fecha_solicitud: new Date().toISOString(),
         fecha_aprobacion: null,
-        adicionales: normalizeAdditionSelections(planAdditions, additionQuantities, totalParticipants)
+        es_festivo_colombia: Boolean(reservationData.date.es_festivo_colombia),
+        adicionales: normalizeAdditionSelections(planAdditions, additionQuantities, totalParticipants),
+        buggy_configuracion: isBuggy
+          ? {
+              buggyCount: reservationData.buggy?.count,
+              assignments: reservationData.buggy?.assignments || [],
+              routeName: reservationData.tour.tour_reserva,
+              groupName: reservationData.tour.group_name || 'Buggys',
+              participants: buggyParticipants
+            }
+          : null
       };
 
       const { data: reservationCreated, error: reservationError } = await createReservation(reservationPayload);
@@ -522,6 +550,18 @@ const HomePage = ({
                   <CompanionFormSection companions={reservationData.companions} onCompanionChange={handleCompanionChange} onRemoveCompanion={removeCompanion} onAddCompanion={addCompanion} errors={errors} />
                 </div>
 
+                {isBuggy && (
+                  <BuggyAllocationSection
+                    participants={buggyParticipants}
+                    allocation={reservationData.buggy}
+                    pricing={reservationData.buggy?.pricing}
+                    onCountChange={handleBuggyCountChange}
+                    onSeatChange={handleBuggySeatChange}
+                    formatCurrency={formatCurrency}
+                    isEnglish={isEnglish}
+                  />
+                )}
+
                 <div className="pt-2 grid gap-3 md:grid-cols-2">
                   <button
                     onClick={() => setCurrentStep(1)}
@@ -675,10 +715,19 @@ const HomePage = ({
                               <span className="uppercase">{reservationData.tour.tour_reserva}</span>
                             </p>
 
-                            {!subjectToAdvisor && (
+                            {!subjectToAdvisor && !isBuggy && (
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-brand-primary font-black text-lg">{formatCurrency(reservationData.tour.precio_por_persona)}</span>
                                 <span className="text-[10px] font-bold text-brand-text-secondary/60 dark:text-dark-text-secondary/60 uppercase tracking-wider">PRECIO POR PERSONA</span>
+                              </div>
+                            )}
+
+                            {!subjectToAdvisor && isBuggy && (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-brand-primary font-black text-lg">{reservationData.buggy?.count || 1} Buggy(s)</span>
+                                <span className="text-[10px] font-bold text-brand-text-secondary/60 dark:text-dark-text-secondary/60 uppercase tracking-wider">
+                                  PRECIO SEGÚN DISTRIBUCIÓN
+                                </span>
                               </div>
                             )}
                           </div>
@@ -687,6 +736,19 @@ const HomePage = ({
                             <span className="text-xs font-bold text-brand-text-secondary dark:text-dark-text-secondary uppercase tracking-widest">PARTICIPANTES</span>
                             <span className="text-sm font-black text-brand-text-main dark:text-dark-text-main whitespace-nowrap">{totalParticipants} Persona(s)</span>
                           </div>
+
+                          {isBuggy && (
+                            <BuggyAllocationSection
+                              participants={buggyParticipants}
+                              allocation={reservationData.buggy}
+                              pricing={reservationData.buggy?.pricing}
+                              onCountChange={handleBuggyCountChange}
+                              onSeatChange={handleBuggySeatChange}
+                              formatCurrency={formatCurrency}
+                              isEnglish={isEnglish}
+                              compact
+                            />
+                          )}
 
                           <ReservationAdditionsSection
                             items={planAdditions}
