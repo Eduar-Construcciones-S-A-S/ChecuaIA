@@ -125,10 +125,20 @@ const WelcomeModal = ({ isOpen, onComplete, onClose, tours = [], loading = false
     const tour = [...tours, ...subplans].find((item) => String(item.id) === String(selectedTourId));
     if (!tour) return;
 
+    const parentTour = selectedGroupId
+      ? tours.find((item) => String(item.id) === String(selectedGroupId))
+      : null;
+
+    const resolvedTour = {
+      ...tour,
+      group_name: parentTour?.name || null,
+      is_buggy: Boolean(parentTour && /bugg/i.test(parentTour.name || '')),
+    };
+
     const { error: planError } = await updateClientPlan(phoneWithPlus, selectedTourId);
     if (planError) console.error('Error al actualizar el plan del cliente:', planError);
 
-    await onComplete({ phone: phoneWithPlus, tour, client: resolvedClient });
+    await onComplete({ phone: phoneWithPlus, tour: resolvedTour, client: resolvedClient });
   };
 
   const handleContinue = async () => {
