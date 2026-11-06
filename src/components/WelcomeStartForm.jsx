@@ -40,6 +40,18 @@ const WelcomeStartForm = ({
   const selectedMainTour = tours.find((tour) => String(tour.id) === String(selectedGroupId || selectedTourId));
   const selectedSubplan = subplans.find((tour) => String(tour.id) === String(selectedTourId));
   const selectedIsGroup = Boolean(selectedMainTour?.es_grupo);
+  const groupName = String(selectedMainTour?.name || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const isBuggyGroup = selectedIsGroup && /bugg/.test(groupName);
+  const isPromotionGroup = selectedIsGroup && /promocion/.test(groupName);
+
+  const groupOptionsLabel = (tour) => {
+    const name = String(tour?.name || '').normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (/bugg/.test(name)) return isEnglish ? 'View Buggy routes and prices' : 'Ver rutas y precios';
+    if (/promocion/.test(name)) return isEnglish ? 'View promotions and prices' : 'Ver promociones y precios';
+    return isEnglish ? 'View options and prices' : 'Ver opciones y precios';
+  };
 
   const filteredTours = !searchTerm.trim()
     ? tours
@@ -63,10 +75,17 @@ const WelcomeStartForm = ({
     found: isEnglish ? 'Existing client' : 'Cliente encontrado',
     newClient: isEnglish ? 'New client' : 'Cliente nuevo',
     processing: isEnglish ? 'Processing...' : 'Procesando...',
-    chooseRoute: isEnglish ? 'Which Buggy route do you want?' : '¿Qué ruta de Buggy quieres?',
-    routePlaceholder: isEnglish ? 'Select a Buggy route' : 'Selecciona una ruta de Buggy',
-    routesAvailable: isEnglish ? 'View routes and prices' : 'Ver rutas y precios',
-    loadingRoutes: isEnglish ? 'Loading routes...' : 'Cargando rutas...',
+    chooseRoute: isBuggyGroup
+      ? (isEnglish ? 'Which Buggy route do you want?' : '¿Qué ruta de Buggy quieres?')
+      : isPromotionGroup
+        ? (isEnglish ? 'Which promotion would you like?' : '¿Qué promoción quieres aprovechar?')
+        : (isEnglish ? 'Which option would you like?' : '¿Qué opción quieres elegir?'),
+    routePlaceholder: isBuggyGroup
+      ? (isEnglish ? 'Select a Buggy route' : 'Selecciona una ruta de Buggy')
+      : isPromotionGroup
+        ? (isEnglish ? 'Select a promotion' : 'Selecciona una promoción')
+        : (isEnglish ? 'Select an option' : 'Selecciona una opción'),
+    loadingRoutes: isEnglish ? 'Loading options...' : 'Cargando opciones...',
     onePerson: isEnglish ? '1 person' : '1 persona',
     twoPeople: isEnglish ? '2 people' : '2 personas'
   };
@@ -85,6 +104,25 @@ const WelcomeStartForm = ({
   };
 
   const renderRoutePrices = (route, compact = false) => {
+    if (!isBuggyGroup) {
+      const unitPrice = Number(route?.price || 0);
+      if (!(unitPrice > 0)) return null;
+      const priceLabel = isEnglish ? 'Price per person' : 'Precio por persona';
+      if (compact) {
+        return (
+          <p className="text-brand-primary font-black text-xs sm:text-sm mt-1">
+            {priceLabel}: {formatCOP(unitPrice)}
+          </p>
+        );
+      }
+      return (
+        <div className="mt-2 rounded-xl border border-brand-primary/15 bg-brand-primary/5 px-3 py-2">
+          <p className="text-[9px] uppercase tracking-wider font-black text-brand-text-secondary dark:text-dark-text-secondary">{priceLabel}</p>
+          <p className="text-sm font-black text-brand-primary">{formatCOP(unitPrice)}</p>
+        </div>
+      );
+    }
+
     const prices = getRoutePrices(route);
     if (!prices.one && !prices.two) return null;
 
@@ -224,7 +262,7 @@ const WelcomeStartForm = ({
                 <div className="min-w-0">
                   <p className="text-brand-text-main dark:text-dark-text-main font-bold text-sm md:text-base truncate">{selectedMainTour.name}</p>
                   <p className="text-brand-primary font-black text-sm mt-1">
-                    {selectedMainTour.es_grupo ? copy.routesAvailable : formatCOP(selectedMainTour.price)}
+                    {selectedMainTour.es_grupo ? groupOptionsLabel(selectedMainTour) : formatCOP(selectedMainTour.price)}
                   </p>
                 </div>
               ) : (
@@ -262,7 +300,7 @@ const WelcomeStartForm = ({
                       >
                         <p className="font-bold text-sm text-brand-text-main dark:text-dark-text-main">{tour.name}</p>
                         <p className="text-brand-primary font-black text-sm mt-1">
-                          {tour.es_grupo ? copy.routesAvailable : formatCOP(tour.price)}
+                          {tour.es_grupo ? groupOptionsLabel(tour) : formatCOP(tour.price)}
                         </p>
                       </button>
                     ))
@@ -278,7 +316,7 @@ const WelcomeStartForm = ({
         {selectedIsGroup && (
           <div className={`space-y-2 transition-all animate-in fade-in slide-in-from-top-2 duration-300 ${isRouteDropdownOpen ? 'pb-[330px]' : ''}`} ref={routeDropdownRef}>
             <label className="text-[10px] font-black text-brand-primary uppercase tracking-[0.2em] ml-4">
-              🚙 {copy.chooseRoute}
+              {isBuggyGroup ? '🚙' : isPromotionGroup ? '🎁' : '✨'} {copy.chooseRoute}
             </label>
             <div className="relative">
               <button
@@ -313,7 +351,11 @@ const WelcomeStartForm = ({
                       type="text"
                       value={routeSearchTerm}
                       onChange={(event) => setRouteSearchTerm(event.target.value)}
-                      placeholder={isEnglish ? 'Search Buggy route...' : 'Buscar ruta de Buggy...'}
+                      placeholder={isBuggyGroup
+                        ? (isEnglish ? 'Search Buggy route...' : 'Buscar ruta de Buggy...')
+                        : isPromotionGroup
+                          ? (isEnglish ? 'Search promotion...' : 'Buscar promoción...')
+                          : (isEnglish ? 'Search option...' : 'Buscar opción...')}
                       className="w-full px-4 py-3 bg-brand-light/30 dark:bg-dark-bg-main/50 rounded-xl text-sm font-bold text-brand-text-main dark:text-dark-text-main outline-none border-2 border-transparent focus:border-brand-primary/30"
                     />
                   </div>
@@ -339,7 +381,11 @@ const WelcomeStartForm = ({
                       ))
                     ) : (
                       <div className="p-8 text-center text-sm font-bold text-brand-text-secondary">
-                        {isEnglish ? 'No routes found.' : 'No encontramos rutas.'}
+                        {isBuggyGroup
+                          ? (isEnglish ? 'No routes found.' : 'No encontramos rutas.')
+                          : isPromotionGroup
+                            ? (isEnglish ? 'No promotions found.' : 'No encontramos promociones.')
+                            : (isEnglish ? 'No options found.' : 'No encontramos opciones.')}
                       </div>
                     )}
                   </div>
@@ -352,17 +398,25 @@ const WelcomeStartForm = ({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[9px] uppercase tracking-[0.16em] font-black text-brand-text-secondary dark:text-dark-text-secondary">
-                      {isEnglish ? 'Selected route' : 'Ruta seleccionada'}
+                      {isBuggyGroup
+                        ? (isEnglish ? 'Selected route' : 'Ruta seleccionada')
+                        : isPromotionGroup
+                          ? (isEnglish ? 'Selected promotion' : 'Promoción seleccionada')
+                          : (isEnglish ? 'Selected option' : 'Opción seleccionada')}
                     </p>
                     <p className="text-sm font-black text-brand-text-main dark:text-dark-text-main mt-1">{selectedSubplan.name}</p>
                   </div>
-                  <span className="shrink-0 rounded-full bg-brand-primary/10 text-brand-primary text-[9px] font-black uppercase tracking-wider px-3 py-1.5">Buggy</span>
+                  <span className="shrink-0 rounded-full bg-brand-primary/10 text-brand-primary text-[9px] font-black uppercase tracking-wider px-3 py-1.5">{isBuggyGroup ? 'Buggy' : isPromotionGroup ? (isEnglish ? 'Promotion' : 'Promoción') : (isEnglish ? 'Option' : 'Opción')}</span>
                 </div>
                 {renderRoutePrices(selectedSubplan)}
                 <p className="text-[10px] text-brand-text-secondary dark:text-dark-text-secondary mt-2 leading-relaxed">
-                  {isEnglish
-                    ? 'Prices shown are the total for 1 Buggy according to the number of occupants.'
-                    : 'Los precios mostrados son el total de 1 Buggy según la cantidad de ocupantes.'}
+                  {isBuggyGroup
+                    ? (isEnglish
+                        ? 'Prices shown are the total for 1 Buggy according to the number of occupants.'
+                        : 'Los precios mostrados son el total de 1 Buggy según la cantidad de ocupantes.')
+                    : (isEnglish
+                        ? 'The displayed price is per person and depends on the number of participants.'
+                        : 'El precio indicado es por persona y se calcula según la cantidad de participantes.')}
                 </p>
               </div>
             )}
