@@ -184,6 +184,7 @@ const HomePage = ({
         id_plan: reservationData.tour.id_plan,
         fecha_reserva: reservationData.date.fecha_reserva,
         hora_reserva: reservationData.time.hora_reserva,
+        tipo_hora: reservationData.tour.tipo_hora,
         telefono_cliente: reservationData.contact.telefono_cliente,
         cantidad_personas: totalParticipants,
         aprobado: false,
@@ -205,8 +206,21 @@ const HomePage = ({
       const { data: reservationCreated, error: reservationError } = await createReservation(reservationPayload);
 
       if (reservationError) {
-        console.error('Error al crear la reserva en Supabase:', reservationError);
-        alert('Hubo un error al crear la reserva. Por favor intenta de nuevo.');
+        console.error('Error al crear la reserva en Supabase:', {
+          code: reservationError?.code,
+          message: reservationError?.message,
+          details: reservationError?.details,
+          hint: reservationError?.hint,
+          planId: reservationData.tour.id_plan
+        });
+        const raw = String(reservationError?.message || '').toLowerCase();
+        if (raw.includes('código operativo') || raw.includes('codigo_plan') || raw.includes('código ch')) {
+          alert('Este plan todavía no está habilitado para reservas. Por favor comunícate con nuestro equipo para ayudarte.');
+        } else if (raw.includes('hora') || raw.includes('fecha')) {
+          alert('No se pudo confirmar la fecha u horario seleccionado. Por favor verifica la disponibilidad o contacta a un asesor.');
+        } else {
+          alert('No se pudo confirmar la reserva. Revisa si aparece en tus reservas antes de intentarlo nuevamente. Si persiste, contacta al equipo e indica el código ' + (reservationError?.code || 'SIN-CODIGO') + '.');
+        }
         return;
       }
 
