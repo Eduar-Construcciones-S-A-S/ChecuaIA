@@ -61,11 +61,14 @@ const applyReservationAdditions = async (reservationRow, phone, selections = [])
   }
 }
 
-const buildReservationDateTime = (date, time) => {
+const buildReservationDateTime = (date, time, noScheduledHour = false) => {
   const dateValue = String(date || '').slice(0, 10)
   const timeValue = normalizeTime(time)
-  if (!dateValue || !timeValue) return null
-  return `${dateValue}T${timeValue}`
+  if (!dateValue) return null
+  // Los planes "sin_hora" solo tienen fecha; 00:00 es un valor técnico
+  // para preservar fecha_reserva, NO una hora programada.
+  if (noScheduledHour) return `${dateValue}T00:00:00`
+  return timeValue ? `${dateValue}T${timeValue}` : null
 }
 
 const resolveDateId = async (planId, selectedDate) => {
@@ -97,11 +100,14 @@ const resolveAppliedPricing = async (reservation) => {
 
   const { data: plan, error: planError } = await supabase
     .from('plan')
-    .select('id_plan,precio_plan,tipo_fecha')
+    .select('id_plan,precio_plan,tipo_fecha,codigo_plan')
     .eq('id_plan', planId)
     .single()
 
   if (planError) return { error: planError }
+  if (!String(plan?.codigo_plan ?? '').trim()) {
+    return { error: new Error('Este plan aún no tiene un código operativo habilitado. Comunícate con un asesor para reservar.') }
+  }
 
   let unitPrice
   let totalPrice
@@ -147,19 +153,21 @@ const findEquivalentPendingReservation = async ({ phone, planId, people, selecte
   const dateValue = String(selectedDate || '').slice(0, 10)
   const timeValue = normalizeTime(selectedTime)
 
-  const { data, error } = await supabase
+  const hasHour = Boolean(timeValue)
+  let query = supabase
     .from('reserva')
-    .select(`
-      *,
-      plan_fechas!inner(fecha),
-      plan_horas!inner(hora)
-    `)
+    .select(hasHour
+      ? '*, plan_fechas!inner(fecha), plan_horas!inner(hora)'
+      : '*, plan_fechas!inner(fecha)')
     .eq('telefono_cliente', phone)
     .eq('id_plan', planId)
     .eq('cantidad_personas', people)
     .eq('aprobado', false)
     .eq('plan_fechas.fecha', dateValue)
-    .eq('plan_horas.hora', timeValue)
+
+  query = hasHour ? query.eq('plan_horas.hora', timeValue) : query.is('id_hora', null)
+
+  const { data, error } = await query
     .order('fecha_solicitud', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -188,10 +196,11 @@ export const getReservationsByPhone = async (phone) => {
 export const createReservation = async (reservation) => {
   try {
     const selectedDate = reservation.fecha_reserva ?? null
-    const selectedTime = reservation.hora_reserva ?? null
+    const noScheduledHour = reservation.tipo_hora === 'sin_hora'
+    const selectedTime = noScheduledHour ? null : (reservation.hora_reserva ?? null)
 
     if (!selectedDate) return { data: null, error: new Error('La reserva no contiene fecha_reserva') }
-    if (!selectedTime) return { data: null, error: new Error('La reserva no contiene hora_reserva') }
+    if (!noScheduledHour && !selectedTime) return { data: null, error: new Error('La reserva no contiene hora_reserva') }
 
     const planId = Number(reservation.id_plan)
     const people = Number(reservation.cantidad_personas || 1)
@@ -264,14 +273,16 @@ export const createReservation = async (reservation) => {
       return { data: null, error }
     }
 
-    const { id: idHora, error: hourError } = await resolveHourId(planId, selectedTime)
-    if (hourError || !idHora) {
+    const { id: idHora, error: hourError } = noScheduledHour
+      ? { id: null, error: null }
+      : await resolveHourId(planId, selectedTime)
+    if (hourError || (!noScheduledHour && !idHora)) {
       const error = hourError || new Error('No se encontró id_hora para la hora seleccionada')
       console.error('Error al resolver la hora de la reserva:', error)
       return { data: null, error }
     }
 
-    const reservationDateTime = buildReservationDateTime(selectedDate, selectedTime)
+    const reservationDateTime = buildReservationDateTime(selectedDate, selectedTime, noScheduledHour)
     const buggyObservation = reservation.buggy_configuracion
       ? buildBuggyObservation({
           configuration: reservation.buggy_configuracion,
