@@ -496,6 +496,17 @@ const HomePage = ({
                 <div className="section-container">
                   <label className="section-title-premium">{t('sections.responsible_info')}</label>
                   <ReservationContactSection sectionRef={contactRef} data={reservationData.contact} onChange={handleContactChange} errors={errors} />
+                   {recargoMina.incluyeMina && (
+                     <div className="mt-3 rounded-2xl border border-amber-400/40 bg-amber-400/10 p-4 text-xs leading-relaxed text-brand-text-main dark:text-dark-text-main">
+                       <strong>{isEnglish ? 'Foreign visitors at the Salt Mine' : 'Visitantes extranjeros en la Mina de Sal'}</strong>
+                       <p className="mt-1">{isEnglish
+                         ? 'The Salt Mine charges an extra COP 14,000 per foreign participant. Choosing a nationality other than Colombia adds this charge automatically.'
+                         : 'La Mina de Sal cobra $14.000 COP adicionales por cada participante extranjero. Se suman automáticamente al seleccionar una nacionalidad diferente a Colombia.'}</p>
+                       {recargoMina.extranjeros > 0 && <p className="mt-2 font-black text-amber-700 dark:text-amber-300">
+                         {recargoMina.extranjeros} × {formatCOP(RECARGO_MINA_EXTRANJERO)} = +{formatCOP(recargoMina.valor)}
+                       </p>}
+                     </div>
+                   )}
                 </div>
 
                 <div className="section-container">
@@ -581,6 +592,12 @@ const HomePage = ({
                     <span className="text-[10px] md:text-xs font-black uppercase px-3 py-1.5 rounded-full bg-brand-primary text-white">+{reservationData.companions.length}</span>
                   </div>
                   <CompanionFormSection companions={reservationData.companions} onCompanionChange={handleCompanionChange} onRemoveCompanion={removeCompanion} onAddCompanion={addCompanion} errors={errors} />
+                   {recargoMina.incluyeMina && recargoMina.extranjeros > 0 && (
+                     <div className="mt-3 rounded-2xl border border-amber-400/40 bg-amber-400/10 p-4 text-xs font-bold text-brand-text-main dark:text-dark-text-main">
+                       {isEnglish ? 'Salt Mine foreign visitor fee' : 'Recargo de Mina de Sal por extranjeros'}:
+                       {' '}{recargoMina.extranjeros} × {formatCOP(RECARGO_MINA_EXTRANJERO)} = +{formatCOP(recargoMina.valor)}.
+                     </div>
+                   )}
                 </div>
 
                 {isBuggy && (
@@ -783,7 +800,15 @@ const HomePage = ({
                             />
                           )}
 
-                          <ReservationAdditionsSection
+                          {recargoMina.incluyeMina && (
+                             <div className="rounded-[1.25rem] border border-amber-400/40 bg-amber-400/10 p-4 space-y-1 text-xs text-brand-text-main dark:text-dark-text-main">
+                               <p className="font-black">{isEnglish ? 'Additional Salt Mine entrance charge' : 'Recargo adicional de la Mina de Sal'}</p>
+                               <p>{isEnglish ? 'The Salt Mine charges COP 14,000 per foreign visitor.' : 'La Mina de Sal cobra $14.000 COP por cada visitante extranjero.'}</p>
+                               <p className="font-bold">{recargoMina.extranjeros} × {formatCOP(RECARGO_MINA_EXTRANJERO)} = +{formatCOP(recargoMina.valor)}</p>
+                               <p className="text-[10px] opacity-80">{isEnglish ? 'Included in the reservation total below.' : 'Este excedente está incluido en el valor total de la reserva.'}</p>
+                             </div>
+                           )}
+                           <ReservationAdditionsSection
                             items={planAdditions}
                             quantities={additionQuantities}
                             people={totalParticipants}
