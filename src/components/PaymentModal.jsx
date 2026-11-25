@@ -59,8 +59,8 @@ const PaymentModal = ({
       : t('summary.payment.whatsapp_message');
     const message = mineForeignFee > 0
       ? defaultMessage + (isEnglish
-          ? '\\nSalt Mine foreign visitor surcharge: COP ' + mineForeignFee.toLocaleString('es-CO') + ' for ' + foreignVisitors + ' visitor(s).'
-          : '\\nRecargo de la Mina de Sal: $' + mineForeignFee.toLocaleString('es-CO') + ' COP por ' + foreignVisitors + ' visitante(s) extranjero(s).')
+          ? '\nSalt Mine foreign visitor surcharge: COP ' + mineForeignFee.toLocaleString('es-CO') + ' for ' + foreignVisitors + ' visitor(s).'
+          : '\nRecargo de la Mina de Sal: $' + mineForeignFee.toLocaleString('es-CO') + ' COP por ' + foreignVisitors + ' visitante(s) extranjero(s).')
       : defaultMessage;
     window.open(`https://wa.me/${PAYMENT_CONFIG.whatsapp.official_number}?text=${encodeURIComponent(message)}`, '_blank');
   };
