@@ -16,6 +16,7 @@ const mapPlan = (item) => ({
   name: item.nombre_plan,
   price: item.precio_plan,
   description: item.descripcion_basica,
+  detail: item.descripcion_detallada,
   tipo_fecha: item.tipo_fecha,
   tipo_hora: item.tipo_hora,
   imagen_url: item.imagen_url,
@@ -64,7 +65,7 @@ export const getTours = async () => {
   try {
     const { data, error } = await supabase
       .from('plan')
-      .select('id_plan, nombre_plan, precio_plan, descripcion_basica, tipo_fecha, tipo_hora, imagen_url, numero_plan, activo, es_grupo, id_plan_padre')
+      .select('id_plan, nombre_plan, precio_plan, descripcion_basica, descripcion_detallada, tipo_fecha, tipo_hora, imagen_url, numero_plan, activo, es_grupo, id_plan_padre')
       .eq('activo', true)
       .is('id_plan_padre', null)
       .order('id_plan', { ascending: true })
@@ -87,7 +88,7 @@ export const getSubplans = async (parentPlanId) => {
   try {
     const { data, error } = await supabase
       .from('plan')
-      .select('id_plan, nombre_plan, precio_plan, descripcion_basica, tipo_fecha, tipo_hora, imagen_url, numero_plan, activo, es_grupo, id_plan_padre')
+      .select('id_plan, nombre_plan, precio_plan, descripcion_basica, descripcion_detallada, tipo_fecha, tipo_hora, imagen_url, numero_plan, activo, es_grupo, id_plan_padre')
       .eq('activo', true)
       .eq('es_grupo', false)
       .eq('id_plan_padre', parentPlanId)
