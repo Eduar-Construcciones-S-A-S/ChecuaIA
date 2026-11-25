@@ -48,7 +48,7 @@ function App() {
       numero_documento: '', fecha_nacimiento: '', nacionalidad: ''
     },
     tour: {
-      tour_reserva: '', precio_por_persona: null, precio_base: null, id_plan: null,
+      tour_reserva: '', descripcion_basica: '', descripcion_detallada: '', precio_por_persona: null, precio_base: null, id_plan: null,
       tipo_fecha: 'cualquier_dia', tipo_hora: 'sin_hora', availableDates: [], availableHours: [],
       is_buggy: false, group_name: null
     },
@@ -355,6 +355,8 @@ function App() {
       setReservationData(prev => {
         const newTourData = {
           tour_reserva: tour.name,
+          descripcion_basica: tour.description || '',
+          descripcion_detallada: tour.detail || '',
           precio_por_persona: tour.price,
           precio_base: tour.price,
           id_plan: tour.id.toString(),

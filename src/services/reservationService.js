@@ -332,3 +332,20 @@ export const createReservation = async (reservation) => {
     return { data: null, error: err }
   }
 }
+
+/**
+ * Confirma el total de la reserva tras guardar las nacionalidades.
+ * La tarifa extranjera la calcula la base de datos y no el navegador.
+ */
+export const getReservationPricingBreakdown = async reservationId => {
+  try {
+    const { data, error } = await supabase
+      .from('reserva')
+      .select('valor_total, recargo_mina_extranjeros, cantidad_extranjeros_mina')
+      .eq('id_reserva', reservationId)
+      .single();
+    return { data, error };
+  } catch (error) {
+    return { data: null, error };
+  }
+};
