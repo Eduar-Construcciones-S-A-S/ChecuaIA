@@ -10,7 +10,8 @@ import WelcomeModal from '../components/WelcomeModal';
 import ReservationAdditionsSection from '../components/ReservationAdditionsSection';
 import BuggyAllocationSection from '../components/BuggyAllocationSection';
 import { saveParticipantsForReservation } from '../services/participantService';
-import { createReservation } from '../services/reservationService';
+import { createReservation, getReservationPricingBreakdown } from '../services/reservationService';
+import { calcularRecargoMina, RECARGO_MINA_EXTRANJERO } from '../utils/mineForeignSurcharge';
 import {
   calculateAdditionsImpact,
   clampAdditionQuantity,
@@ -156,7 +157,12 @@ const HomePage = ({
     ? Number(reservationData.buggy?.pricing?.totalPrice || 0)
     : (reservationData.tour.precio_por_persona || 0) * totalParticipants;
   const additionsImpact = calculateAdditionsImpact(planAdditions, additionQuantities, totalParticipants);
-  const totalPrice = Math.max(0, baseTotalPrice + additionsImpact);
+  const recargoMina = calcularRecargoMina(
+    reservationData.tour,
+    [reservationData.contact.nacionalidad, ...(reservationData.companions || []).map(p => p.nacionalidad)]
+  );
+  const precioSinRecargoMina = Math.max(0, baseTotalPrice + additionsImpact);
+  const totalPrice = precioSinRecargoMina + recargoMina.valor;
   const depositAmount = Math.round(totalPrice * 0.3);
   const remainingAmount = totalPrice - depositAmount;
 
@@ -265,8 +271,17 @@ const HomePage = ({
       console.log('Reserva creada:', reservationCreated);
       console.log('Participantes guardados:', data);
       console.log('Total de referencia:', totalPrice);
-
-      setPaymentTotal(Number(reservationCreated?.valor_total || totalPrice));
+      let totalGuardado = Number(reservationCreated?.valor_total || totalPrice);
+      if (recargoMina.valor > 0) {
+        const { data: desgloseGuardado, error: desgloseError } = await getReservationPricingBreakdown(reservationId);
+        if (desgloseError || !desgloseGuardado ||
+            Number(desgloseGuardado.recargo_mina_extranjeros) !== recargoMina.valor) {
+          alert('La reserva fue registrada, pero no se pudo verificar el recargo de la Mina de Sal. No pagues hasta confirmar el total con el equipo.');
+          return;
+        }
+        totalGuardado = Number(desgloseGuardado.valor_total);
+      }
+      setPaymentTotal(totalGuardado);
       setIsPaymentModalOpen(true);
     } catch (err) {
       console.error('Error inesperado al procesar participantes:', err);
@@ -927,6 +942,8 @@ const HomePage = ({
             experience={reservationData.tour.tour_reserva}
             participants={totalParticipants}
             totalAmount={paymentTotal ?? totalPrice}
+             mineForeignFee={recargoMina.valor}
+             foreignVisitors={recargoMina.extranjeros}
             formatCurrency={formatCurrency}
             subjectToAdvisor={subjectToAdvisor}
           />
