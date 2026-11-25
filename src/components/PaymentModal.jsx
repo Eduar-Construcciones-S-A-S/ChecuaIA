@@ -8,6 +8,8 @@ const PaymentModal = ({
   experience,
   participants,
   totalAmount,
+  mineForeignFee = 0,
+  foreignVisitors = 0,
   formatCurrency,
   subjectToAdvisor = false
 }) => {
@@ -55,7 +57,12 @@ const PaymentModal = ({
           ? 'Hello, I am sending the payment receipt for the amount agreed with the advisor for my Desierto de Checua reservation.'
           : 'Hola, envío el comprobante de pago del valor acordado con el asesor para mi reserva en el Desierto de Checua.')
       : t('summary.payment.whatsapp_message');
-    window.open(`https://wa.me/${PAYMENT_CONFIG.whatsapp.official_number}?text=${encodeURIComponent(defaultMessage)}`, '_blank');
+    const message = mineForeignFee > 0
+      ? defaultMessage + (isEnglish
+          ? '\\nSalt Mine foreign visitor surcharge: COP ' + mineForeignFee.toLocaleString('es-CO') + ' for ' + foreignVisitors + ' visitor(s).'
+          : '\\nRecargo de la Mina de Sal: $' + mineForeignFee.toLocaleString('es-CO') + ' COP por ' + foreignVisitors + ' visitante(s) extranjero(s).')
+      : defaultMessage;
+    window.open(`https://wa.me/${PAYMENT_CONFIG.whatsapp.official_number}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
   const CopyButton = ({ value, field, label }) => (
@@ -115,7 +122,16 @@ const PaymentModal = ({
                       <p className="mt-1.5 text-lg sm:text-xl font-black text-brand-primary">{formatCurrency(depositAmount)} COP</p>
                     </div>
                   </div>
-                  <p className="mt-2 text-[9px] font-bold text-brand-text-secondary dark:text-dark-text-secondary text-center">Paga el abono mínimo para confirmar tu cupo.</p>
+                  {mineForeignFee > 0 && (
+                     <div className="mt-3 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-xs text-brand-text-main dark:text-dark-text-main">
+                       <strong>{isEnglish ? 'Salt Mine foreign visitor surcharge' : 'Recargo de la Mina de Sal por extranjeros'}</strong>
+                       <p>{foreignVisitors} × {formatCurrency(14000)} COP = +{formatCurrency(mineForeignFee)} COP.</p>
+                       <p className="mt-1">{isEnglish
+                         ? 'Charged by the Salt Mine and included in your total and deposit.'
+                         : 'Este excedente lo cobra la Mina de Sal y ya está incluido en el total y el abono.'}</p>
+                     </div>
+                   )}
+                   <p className="mt-2 text-[9px] font-bold text-brand-text-secondary dark:text-dark-text-secondary text-center">Paga el abono mínimo para confirmar tu cupo.</p>
                 </>
               )}
             </div>
