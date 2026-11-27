@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { getTours, getPlanDates, getPlanHours } from './services/tourService';
+import { getTours, getPlanDates, getPlanHours, getColombiaToday } from './services/tourService';
 import { getAutomaticPlanPricing } from './services/pricingService';
 import {
   buildDefaultBuggyAssignments,
@@ -412,6 +412,8 @@ function App() {
   };
 
   const handleDateSelect = (date, meta) => {
+    if (meta.fecha_reserva < getColombiaToday()) return;
+    if (reservationData.tour.tipo_fecha === 'fechas_especificas' && !reservationData.tour.availableDates.includes(meta.fecha_reserva)) return;
     setReservationData(prev => ({
       ...prev,
       date: {
@@ -492,7 +494,7 @@ function App() {
       else if (age < 1 || age > 120) { newErrors.fecha_nacimiento = t('errors.invalid_age'); newErrors.fecha_nacimiento_key = 'invalid_age'; newErrors.contact = true; }
     }
     if (!tour.tour_reserva) { newErrors.tour = t('errors.required_tour'); newErrors.tour_key = 'required_tour'; }
-    if (!date.fecha_reserva) { newErrors.date = t('errors.required_date'); newErrors.date_key = 'required_date'; }
+    if (!date.fecha_reserva || date.fecha_reserva < getColombiaToday() || (tour.tipo_fecha === 'fechas_especificas' && !tour.availableDates.includes(date.fecha_reserva))) { newErrors.date = t('errors.required_date'); newErrors.date_key = 'required_date'; }
     if ((tour.tipo_hora === 'varias_horas' || tour.tipo_hora === 'hora_fija') && !time.hora_reserva) { newErrors.time = t('errors.required_time'); newErrors.time_key = 'required_time'; }
 
     setErrors(newErrors);

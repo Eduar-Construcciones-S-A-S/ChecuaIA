@@ -10,6 +10,7 @@ import WelcomeModal from '../components/WelcomeModal';
 import ReservationAdditionsSection from '../components/ReservationAdditionsSection';
 import BuggyAllocationSection from '../components/BuggyAllocationSection';
 import { saveParticipantsForReservation } from '../services/participantService';
+import { getColombiaToday, getPlanDates } from '../services/tourService';
 import { createReservation, getReservationPricingBreakdown } from '../services/reservationService';
 import { calcularRecargoMina, RECARGO_MINA_EXTRANJERO } from '../utils/mineForeignSurcharge';
 import {
@@ -181,6 +182,14 @@ const HomePage = ({
   const handleProceedToPayment = async () => {
     setIsSaving(true);
     try {
+      const date = reservationData.date.fecha_reserva;
+      const tour = reservationData.tour;
+      if (!date || date < getColombiaToday() ||
+          (tour.tipo_fecha === 'fechas_especificas' && !(await getPlanDates(tour.id_plan)).includes(date))) {
+        alert(i18n.language === 'en' ? 'This date is no longer available. Please select another date.' : 'Esta fecha ya no está disponible. Selecciona otra fecha.');
+        setShowSummary(false);
+        return;
+      }
       const normalizePhoneForParticipant = (phone) => {
         if (!phone) return '';
         return phone.toString().replace(/\s+/g, '').replace(/^\+/, '');

@@ -1,5 +1,6 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { getColombiaToday } from '../services/tourService';
 
 /**
  * Utilidades para el cálculo de festivos en Colombia
@@ -97,11 +98,14 @@ const DateSelectionSection = ({ onSelect, selectedDate, errors, sectionRef, avai
   const [currentMonthIndex, setCurrentMonthIndex] = useState(0);
   const scrollRef = useRef(null);
 
-  const today = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
+  const [todayISO, setTodayISO] = useState(getColombiaToday);
+  useEffect(() => {
+    const refresh = () => setTodayISO(getColombiaToday());
+    const timer = setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    return () => { clearInterval(timer); window.removeEventListener('focus', refresh); };
   }, []);
+  const today = useMemo(() => new Date(`${todayISO}T00:00:00`), [todayISO]);
 
   /**
    * Identifica si hoy es el último día del mes
@@ -138,7 +142,7 @@ const DateSelectionSection = ({ onSelect, selectedDate, errors, sectionRef, avai
   const isHoliday = (date) => holidays.includes(date.toDateString());
   const isWeekend = (date) => date.getDay() === 0 || date.getDay() === 6;
   const isToday = (date) => date.toDateString() === today.toDateString();
-  const isPast = (date) => date < today;
+  const isPast = (date) => formatDateISO(date) < getColombiaToday();
 
   /**
    * Verifica si una fecha es seleccionable según la lógica del plan
@@ -214,9 +218,9 @@ const DateSelectionSection = ({ onSelect, selectedDate, errors, sectionRef, avai
         if (Number.isNaN(date.getTime())) return null
         return { iso: safeIso, date }
       })
-      .filter(Boolean)
+      .filter(item => item && item.iso >= todayISO)
       .sort((a, b) => a.date.getTime() - b.date.getTime())
-  }, [availableDates, tipoFecha])
+  }, [availableDates, tipoFecha, todayISO])
 
   const renderMonth = (monthDate, monthIdx) => {
     const year = monthDate.getFullYear();
@@ -440,7 +444,7 @@ const DateSelectionSection = ({ onSelect, selectedDate, errors, sectionRef, avai
 
         {/* Selected Date Summary */}
         <div className="space-y-4">
-          {selectedDate ? (
+          {selectedDate && isSelectable(selectedDate) ? (
             <div className="animate-in fade-in slide-in-from-top-2 duration-300">
               <div className="bg-brand-light/30 dark:bg-dark-bg-main/40 border border-brand-primary/20 rounded-[2rem] p-6 flex flex-col md:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-4 min-w-0">
