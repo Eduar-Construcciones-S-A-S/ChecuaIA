@@ -143,15 +143,26 @@ export const getSubplans = async (parentPlanId) => {
   }
 }
 
+// La fecha civil de Colombia es la referencia para todas las reservas.
+export const getColombiaToday = (now = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(now)
+  const part = type => parts.find(p => p.type === type)?.value
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
+
 export const getPlanDates = async (planId) => {
   try {
     const { data, error } = await supabase
       .from('plan_fechas')
       .select('fecha')
       .eq('id_plan', planId)
+      .gte('fecha', getColombiaToday())
+      .order('fecha', { ascending: true })
 
     if (error) throw error
-    return data.map(d => d.fecha)
+    return [...new Set((data ?? []).map(d => d.fecha).filter(fecha => fecha >= getColombiaToday()))]
   } catch (err) {
     console.error('Error al cargar fechas del plan:', err)
     return []
